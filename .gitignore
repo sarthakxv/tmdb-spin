@@ -3,5 +3,7 @@ dist/
 .DS_Store
 .env
 .env.*
+!.env.example
 *.local
 .cache/
+.tmdb-session
