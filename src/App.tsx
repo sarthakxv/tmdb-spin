@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from "motion/react"
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
 import { Carousel } from "./Carousel"
 import { cn } from "./lib/cn"
-import { latchReel } from "./reel-audio"
+import { latchReel, missReel, primeReel } from "./reel-audio"
 import { growRing } from "./sample"
 import type { Film } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
@@ -142,6 +142,7 @@ export function App() {
     }
     setMatching(true)
     setError(null)
+    primeReel()
     try {
       const response = await fetch("/api/mood", {
         method: "POST",
@@ -151,9 +152,17 @@ export function App() {
           films: ring.map((film) => ({ name: film.name, overview: film.overview ?? "" })),
         }),
       })
-      const data = (await response.json()) as { index?: number; error?: string }
+      const data = (await response.json()) as { index?: number; match?: boolean; error?: string }
+      if (!response.ok) {
+        setError(data.error ?? "Jev could not pick a movie.")
+        return
+      }
+      if (data.match === false) {
+        missReel()
+        setError("Your watchlist has no movie for current mood")
+        return
+      }
       if (
-        !response.ok ||
         typeof data.index !== "number" ||
         !Number.isInteger(data.index) ||
         data.index < 0 ||
@@ -227,7 +236,11 @@ export function App() {
       </div>
 
       <div className="flex flex-col items-center gap-4 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        {error && <p className="max-w-sm text-center text-pretty text-sm text-red-400">{error}</p>}
+        {error && (
+          <p role="alert" className="max-w-sm text-center text-pretty text-sm text-red-400">
+            {error}
+          </p>
+        )}
         <p className="sr-only" aria-live="polite">
           {matching ? "Matching a movie" : phase === "revealed" && selected ? selected.name : ""}
         </p>

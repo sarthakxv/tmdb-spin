@@ -19,14 +19,20 @@ test("jev's choice is the film index", async () => {
   assert.equal(index, 1)
 })
 
-test("one film is chosen without asking", async () => {
+test("one film can still be refused", async () => {
   let called = false
-  const index = await selectByMood([{ name: "Only" }], async () => {
+  const index = await selectByMood([{ name: "Only" }], async (criteria) => {
     called = true
-    return "0"
+    assert.equal(typeof criteria.none, "string")
+    return "none"
   })
-  assert.equal(index, 0)
-  assert.equal(called, false)
+  assert.equal(called, true)
+  assert.equal(index, null)
+})
+
+test("jev can say nothing fits", async () => {
+  const index = await selectByMood([{ name: "Heat" }, { name: "Past Lives" }], async () => "none")
+  assert.equal(index, null)
 })
 
 test("more than 255 films are narrowed in rounds", async () => {
@@ -46,7 +52,18 @@ test("more than 255 films are narrowed in rounds", async () => {
     return bestKey
   })
   assert.equal(index, films.length - 1)
-  assert.deepEqual(sizes, [CHOICE_LIMIT, 45, 2])
+  assert.deepEqual(sizes, [CHOICE_LIMIT, 47, 3])
+})
+
+test("every group refusing means nothing fits", async () => {
+  const films = Array.from({ length: CHOICE_LIMIT }, () => ({ name: "Film" }))
+  let calls = 0
+  const index = await selectByMood(films, async () => {
+    calls += 1
+    return "none"
+  })
+  assert.equal(index, null)
+  assert.equal(calls, 2)
 })
 
 test("an unknown choice is rejected", async () => {

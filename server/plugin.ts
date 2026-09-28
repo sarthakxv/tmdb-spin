@@ -99,6 +99,10 @@ export function tmdbPlugin(apiKey: string, envSession: string | undefined, openR
           return
         }
         const index = await selectByMood(films, jevAsk(openRouterKey.trim(), mood))
+        if (index == null) {
+          send(res, 200, { match: false })
+          return
+        }
         send(res, 200, { index })
         return
       }
