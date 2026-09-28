@@ -79,10 +79,10 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
     let stopReel: (() => void) | null = null
     const spin = () => {
       stopReel = reduced ? null : followReel(rotation, films.length)
-      const target = targetRotation(rotation.get(), selectedIndex, films.length)
+      const target = targetRotation(rotation.get(), selectedIndex, films.length, 3)
       current = animate(rotation, target, {
-        duration: reduced ? 0 : 3.4,
-        ease: "easeOut",
+        duration: reduced ? 0 : 5.8,
+        ease: [0.2, 0.65, 0.3, 1],
         onComplete: () => {
           stopReel?.()
           stopReel = null
