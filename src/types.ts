@@ -1,1 +1,1 @@
-export { type Film, type FilmDetails, type Media, tmdbLink } from "../shared/types.ts"
+export { type Film, type FilmDetails, type Media, type Strength, tmdbLink } from "../shared/types.ts"

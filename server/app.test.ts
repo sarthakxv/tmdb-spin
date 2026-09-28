@@ -32,7 +32,7 @@ function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
 function makeApp(overrides: Partial<Deps> = {}, configOverrides: Partial<Config> = {}) {
   return createApp(
     { ...config, ...configOverrides },
-    { tmdb: fakeTmdb(), ask: () => async () => "0", sessions: memoryStore(), watchlists: createWatchlistCache(), ...overrides },
+    { tmdb: fakeTmdb(), ask: () => async () => ({ choice: "0" }), sessions: memoryStore(), watchlists: createWatchlistCache(), ...overrides },
   )
 }
 
@@ -122,12 +122,12 @@ test("the mood is matched against the server's watchlist, not the request", asyn
   const app = makeApp({
     ask: () => async (criteria) => {
       seen.push(Object.values(criteria))
-      return "1"
+      return { choice: "1" }
     },
   })
   await connect(app)
   const response = await moodRequest(app, { mood: "noir", films: [{ name: "Injected" }] })
-  assert.deepEqual(await response.json(), { film: brick })
+  assert.deepEqual(await response.json(), { film: brick, strength: null })
   assert.ok(seen[0]!.some((text) => text.startsWith("Heat")))
   assert.ok(!seen[0]!.some((text) => text.startsWith("Injected")))
 })
@@ -137,12 +137,12 @@ test("excluded films are not offered again", async () => {
   const app = makeApp({
     ask: () => async (criteria) => {
       offered.push(...Object.values(criteria))
-      return "0"
+      return { choice: "0" }
     },
   })
   await connect(app)
   const response = await moodRequest(app, { mood: "noir", exclude: [1] })
-  assert.deepEqual(await response.json(), { film: brick })
+  assert.deepEqual(await response.json(), { film: brick, strength: null })
   assert.ok(!offered.some((text) => text.startsWith("Heat")))
 })
 

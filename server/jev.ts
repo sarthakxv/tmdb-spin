@@ -20,6 +20,7 @@ export function jevAsk(apiKey: string, mood: string): Ask {
         },
       },
     })
-    return result.answers.film.choice
+    const answer = result.answers.film
+    return { choice: answer.choice, probability: answer.probabilities?.[answer.choice] }
   }
 }

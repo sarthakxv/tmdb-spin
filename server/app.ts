@@ -5,7 +5,7 @@ import { stream } from "hono/streaming"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import type { Film, FilmDetails, Media } from "../shared/types.ts"
 import type { Config } from "./config.ts"
-import { type Ask, MoodError, selectByMood } from "./mood.ts"
+import { type Ask, MoodError, selectByMood, strengthOf } from "./mood.ts"
 import { LOCAL_SESSION, type Session, type SessionStore } from "./sessions.ts"
 import { createTtlCache } from "./ttl-cache.ts"
 import type { WatchlistCache } from "./watchlist-cache.ts"
@@ -122,8 +122,8 @@ export function createApp(config: Config, deps: Deps) {
       const candidates = films.filter((film) => !exclude.has(film.id))
       if (candidates.length === 0) return c.json({ match: false })
       try {
-        const index = await selectByMood(candidates, deps.ask(mood))
-        return index == null ? c.json({ match: false }) : c.json({ film: candidates[index] })
+        const pick = await selectByMood(candidates, deps.ask(mood))
+        return pick == null ? c.json({ match: false }) : c.json({ film: candidates[pick.index], strength: strengthOf(pick.probability) })
       } catch (error) {
         if (error instanceof MoodError) return c.json({ error: error.message }, error.status as ContentfulStatusCode)
         if (error instanceof APICallError && error.statusCode === 401) {

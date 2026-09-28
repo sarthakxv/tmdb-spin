@@ -2,6 +2,8 @@ export type Film = { id: number; name: string; poster: string | null; overview: 
 
 export type Media = "movie"
 
+export type Strength = "strong" | "good" | "loose"
+
 export type FilmDetails = {
   id: number
   year: number | null

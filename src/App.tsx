@@ -7,7 +7,7 @@ import { RevealPanel } from "./RevealPanel"
 import { latchReel, missReel, primeReel } from "./reel-audio"
 import { growRing, placePick, RING_LIMIT } from "./sample"
 import { frontIndex } from "./spin"
-import type { Film, FilmDetails } from "./types"
+import type { Film, FilmDetails, Strength } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
 
 type Setup = "loading" | "connect" | "ready"
@@ -46,6 +46,8 @@ export function App() {
   const [connecting, setConnecting] = useState(false)
   const [mood, setMood] = useState("")
   const [matching, setMatching] = useState(false)
+  const [picked, setPicked] = useState<{ mood: string; ids: number[] }>({ mood: "", ids: [] })
+  const [strength, setStrength] = useState<Strength | null>(null)
 
   useEffect(() => {
     const denied = new URLSearchParams(window.location.search).get("auth") === "denied"
@@ -145,6 +147,8 @@ export function App() {
       setError("Enter a mood.")
       return
     }
+    const key = feeling.toLowerCase()
+    const exclude = picked.mood === key ? picked.ids : []
     setMatching(true)
     setError(null)
     primeReel()
@@ -152,9 +156,9 @@ export function App() {
       const response = await fetch("/api/mood", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mood: feeling }),
+        body: JSON.stringify({ mood: feeling, exclude }),
       })
-      const data = (await response.json()) as { film?: Film; match?: boolean; error?: string }
+      const data = (await response.json()) as { film?: Film; match?: boolean; strength?: Strength | null; error?: string }
       if (response.status === 401) {
         setRing([])
         setSelectedIndex(null)
@@ -169,7 +173,8 @@ export function App() {
       }
       if (data.match === false) {
         missReel()
-        setError("Your watchlist has no movie for current mood")
+        setPicked({ mood: key, ids: [] })
+        setError(exclude.length > 0 ? "Nothing else in your watchlist fits this mood." : "Your watchlist has no movie for current mood")
         return
       }
       if (!data.film) {
@@ -179,6 +184,8 @@ export function App() {
       const current = ringRef.current
       const count = current.length
       const back = count === 0 ? 0 : (frontIndex(rotation.get(), count) + Math.floor(count / 2)) % count
+      setPicked({ mood: key, ids: [...exclude, data.film.id] })
+      setStrength(data.strength ?? null)
       const placed = placePick(current, data.film, back)
       setRing(placed.ring)
       latchReel()
@@ -282,7 +289,17 @@ export function App() {
           {matching ? "Matching a movie" : phase === "revealed" && selected ? selected.name : ""}
         </p>
         {phase === "revealed" && selected ? (
-          <RevealPanel film={selected} details={details} onBack={() => setPhase("ready")} />
+          <RevealPanel film={selected} details={details} strength={strength} onBack={() => setPhase("ready")}>
+            {mood.trim() && (
+              <button
+                type="button"
+                onClick={() => void spin()}
+                className="rounded-full bg-white px-5 py-2.5 text-sm text-neutral-950"
+              >
+                Something else
+              </button>
+            )}
+          </RevealPanel>
         ) : (
           showRing && (
           <form

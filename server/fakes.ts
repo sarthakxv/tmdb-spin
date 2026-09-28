@@ -19,6 +19,7 @@ export const FAKE_FILMS: Film[] = [
   { id: 157336, name: "Interstellar", poster: "/interstellar.jpg", overview: "Explorers travel through space to save humanity." },
   { id: 116149, name: "Paddington", poster: null, overview: "A cozy bear finds a home in London." },
   { id: 949, name: "Heat", poster: null, overview: "A heist crew and a detective collide." },
+  { id: 286217, name: "The Martian", poster: null, overview: "An astronaut is stranded in space." },
 ]
 
 export function fakeTmdb(appUrl: string): Tmdb {
@@ -39,6 +40,6 @@ export function fakeAsk(mood: string): Ask {
   return async (criteria) => {
     const word = mood.toLowerCase()
     const hit = Object.entries(criteria).find(([key, text]) => key !== "none" && text.toLowerCase().includes(word))
-    return hit ? hit[0] : "none"
+    return { choice: hit ? hit[0] : "none" }
   }
 }

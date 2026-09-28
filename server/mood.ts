@@ -1,3 +1,5 @@
+import type { Strength } from "../shared/types.ts"
+
 export const CHOICE_LIMIT = 255
 const FILM_BATCH = CHOICE_LIMIT - 1
 const NONE = "none"
@@ -23,14 +25,23 @@ export function filmBlurb(film: MoodFilm): string {
   return `${name}. ${overview.slice(0, OVERVIEW_LIMIT).trimEnd()}`
 }
 
-export type Ask = (criteria: Record<string, string>) => Promise<string>
+export type Answer = { choice: string; probability?: number }
+export type Ask = (criteria: Record<string, string>) => Promise<Answer>
+export type Pick = { index: number; probability?: number }
 
-export async function selectByMood(films: MoodFilm[], ask: Ask): Promise<number | null> {
+export function strengthOf(probability?: number): Strength | null {
+  if (probability == null) return null
+  if (probability >= 0.6) return "strong"
+  if (probability >= 0.3) return "good"
+  return "loose"
+}
+
+export async function selectByMood(films: MoodFilm[], ask: Ask): Promise<Pick | null> {
   if (films.length === 0) throw new MoodError("The watchlist is empty.", 400)
   return narrow(films, films.map((_, index) => index), ask)
 }
 
-async function narrow(films: MoodFilm[], indices: number[], ask: Ask): Promise<number | null> {
+async function narrow(films: MoodFilm[], indices: number[], ask: Ask): Promise<Pick | null> {
   if (indices.length === 0) return null
   if (indices.length <= FILM_BATCH) {
     const criteria: Record<string, string> = {
@@ -39,21 +50,25 @@ async function narrow(films: MoodFilm[], indices: number[], ask: Ask): Promise<n
     for (const [local, filmIndex] of indices.entries()) {
       criteria[String(local)] = filmBlurb(films[filmIndex]!)
     }
-    const choice = await ask(criteria)
-    if (choice === NONE) return null
-    const local = Number(choice)
-    if (!Number.isInteger(local) || criteria[choice] === undefined) {
+    const answer = await ask(criteria)
+    if (answer.choice === NONE) return null
+    const local = Number(answer.choice)
+    if (!Number.isInteger(local) || criteria[answer.choice] === undefined) {
       throw new MoodError("Jev could not pick a movie.")
     }
-    return indices[local]!
+    return { index: indices[local]!, probability: answer.probability }
   }
 
   const groups: number[][] = []
   for (let start = 0; start < indices.length; start += FILM_BATCH) groups.push(indices.slice(start, start + FILM_BATCH))
   const winners = (await mapLimit(groups, PARALLEL_GROUPS, (group) => narrow(films, group, ask))).filter(
-    (winner): winner is number => winner != null,
+    (winner): winner is Pick => winner != null,
   )
-  return narrow(films, winners, ask)
+  return narrow(
+    films,
+    winners.map((winner) => winner.index),
+    ask,
+  )
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
