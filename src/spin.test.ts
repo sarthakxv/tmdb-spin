@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { growRing, placePick, sampleFilms } from "./sample.ts"
+import { growRing, placePick, randomPick, sampleFilms } from "./sample.ts"
 import { coverScale, frontIndex, targetRotation } from "./spin.ts"
 
 test("a spin lands on the chosen card", () => {
@@ -61,6 +61,13 @@ test("a pick outside a full ring replaces the card at the back", () => {
   assert.equal(placed.ring.length, 3)
   assert.equal(placed.index, 1)
   assert.equal(placed.ring[1]!.id, 99)
+})
+
+test("a random pick avoids the last film when it can", () => {
+  const films = [{ id: 1 }, { id: 2 }]
+  assert.equal(randomPick(films, 1, () => 0)?.id, 2)
+  assert.equal(randomPick([{ id: 1 }], 1, () => 0)?.id, 1)
+  assert.equal(randomPick([], null), null)
 })
 
 test("a pick outside a short ring is added", () => {

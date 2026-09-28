@@ -17,6 +17,12 @@ export function growRing<T>(ring: T[], batch: T[], random = Math.random, limit =
   return ring.concat(batch.slice(0, limit - ring.length))
 }
 
+export function randomPick<T extends { id: number }>(films: T[], avoidId: number | null, random = Math.random): T | null {
+  const pool = films.length > 1 ? films.filter((film) => film.id !== avoidId) : films
+  if (pool.length === 0) return null
+  return pool[Math.floor(random() * pool.length)]!
+}
+
 export function placePick<T extends { id: number }>(
   ring: T[],
   film: T,

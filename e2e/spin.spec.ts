@@ -26,6 +26,13 @@ test("something else picks a different film for the same mood", async ({ page })
   await expect(page.getByRole("heading", { name: "The Martian" })).toBeVisible()
 })
 
+test("a blank mood spins at random", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("button", { name: "Surprise me" }).click()
+  await expect(page.getByRole("region", { name: /details/ })).toBeVisible()
+})
+
 test("a mood nothing fits says so", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()

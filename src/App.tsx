@@ -5,7 +5,7 @@ import { visitorRegion } from "./details"
 import { cn } from "./lib/cn"
 import { RevealPanel } from "./RevealPanel"
 import { latchReel, missReel, primeReel } from "./reel-audio"
-import { growRing, placePick, RING_LIMIT } from "./sample"
+import { growRing, placePick, randomPick, RING_LIMIT } from "./sample"
 import { frontIndex } from "./spin"
 import type { Film, FilmDetails, Strength } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
@@ -34,6 +34,7 @@ function WatchlistLoader() {
 export function App() {
   const reducedMotion = useReducedMotion()
   const [setup, setSetup] = useState<Setup>("loading")
+  const [watchlist, setWatchlist] = useState<Film[]>([])
   const [ring, setRing] = useState<Film[]>([])
   const ringRef = useRef(ring)
   ringRef.current = ring
@@ -79,6 +80,7 @@ export function App() {
         }
         await readWatchlist(response, (batch) => {
           if (cancelled) return
+          setWatchlist((current) => current.concat(batch))
           setRing((current) => growRing(current, batch, Math.random, RING_LIMIT))
           if (opened) return
           opened = true
@@ -90,6 +92,7 @@ export function App() {
         if (error instanceof WatchlistError) {
           setError(error.message)
           if (error.message.includes("rejected the credentials")) {
+            setWatchlist([])
             setRing([])
             setSetup("connect")
             return
@@ -144,7 +147,18 @@ export function App() {
     if (ring.length === 0 || phase === "spinning" || phase === "closing" || matching) return
     const feeling = mood.trim()
     if (!feeling) {
-      setError("Enter a mood.")
+      const film = randomPick(watchlist, selected?.id ?? null)
+      if (!film) return
+      setStrength(null)
+      const current = ringRef.current
+      const count = current.length
+      const back = count === 0 ? 0 : (frontIndex(rotation.get(), count) + Math.floor(count / 2)) % count
+      const placed = placePick(current, film, back)
+      latchReel()
+      setRing(placed.ring)
+      setSelectedIndex(placed.index)
+      setSpinId((value) => value + 1)
+      setPhase("spinning")
       return
     }
     const key = feeling.toLowerCase()
@@ -160,6 +174,7 @@ export function App() {
       })
       const data = (await response.json()) as { film?: Film; match?: boolean; strength?: Strength | null; error?: string }
       if (response.status === 401) {
+        setWatchlist([])
         setRing([])
         setSelectedIndex(null)
         setPhase("ready")
@@ -201,6 +216,7 @@ export function App() {
 
   async function disconnect() {
     await fetch("/api/disconnect", { method: "POST" }).catch(() => {})
+    setWatchlist([])
     setRing([])
     setSelectedIndex(null)
     setPhase("ready")
@@ -312,7 +328,7 @@ export function App() {
             <input
               value={mood}
               onChange={(event) => setMood(event.target.value)}
-              placeholder="A mood"
+              placeholder="A mood, or leave it blank"
               aria-label="Mood"
               autoComplete="off"
               disabled={matching || phase === "spinning" || phase === "closing"}
@@ -326,7 +342,7 @@ export function App() {
                 (matching || phase === "spinning" || phase === "closing") && "opacity-60",
               )}
             >
-              {matching ? "Matching" : phase === "spinning" || phase === "closing" ? "Spinning" : "Spin"}
+              {matching ? "Matching" : phase === "spinning" || phase === "closing" ? "Spinning" : mood.trim() ? "Spin" : "Surprise me"}
             </button>
           </form>
           )
