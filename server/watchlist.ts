@@ -7,6 +7,8 @@ export type WatchlistMovie = {
   title?: string
   poster_path?: string | null
   overview?: string | null
+  release_date?: string
+  genre_ids?: number[]
 }
 
 export type WatchlistPage = {
@@ -41,6 +43,8 @@ export function toFilm(movie: WatchlistMovie): Film | null {
     name,
     poster: movie.poster_path || null,
     overview: movie.overview?.trim() ?? "",
+    year: movie.release_date ? Number(movie.release_date.slice(0, 4)) || null : null,
+    genreIds: movie.genre_ids ?? [],
   }
 }
 
@@ -124,6 +128,7 @@ export type Tmdb = {
   fetchWatchlist(sessionId: string, onPage?: (films: Film[]) => void): Promise<Film[]>
   titleDetails(media: Media, id: number, region: string): Promise<FilmDetails>
   setWatchlist(sessionId: string, media: Media, id: number, onList: boolean): Promise<void>
+  genres(media: Media): Promise<{ id: number; name: string }[]>
 }
 
 export type TmdbOptions = {
@@ -190,6 +195,10 @@ export function createTmdb(apiKey: string, options: TmdbOptions = {}): Tmdb {
     async titleDetails(media, id, region) {
       const path = `/3/${media}/${id}?append_to_response=${encodeURIComponent("videos,watch/providers")}`
       return toDetails(await call<RawDetails>(path), media, region)
+    },
+    async genres(media) {
+      const data = await call<{ genres?: { id: number; name: string }[] }>(`/3/genre/${media}/list`)
+      return data.genres ?? []
     },
     async setWatchlist(sessionId, media, id, onList) {
       const account = await call<{ id?: number }>("/3/account", { sessionId })

@@ -58,6 +58,15 @@ test("a watched film can be removed", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Mood", exact: true })).toBeVisible()
 })
 
+test("filtering to one decade keeps other films out", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("button", { name: "Filters" }).click()
+  await page.getByRole("button", { name: "1990s" }).click()
+  await page.getByRole("button", { name: "Surprise me" }).click()
+  await expect(page.getByRole("heading", { name: "Heat" })).toBeVisible()
+})
+
 test("disconnecting returns to Connect", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()

@@ -10,8 +10,8 @@ import { TmdbError, type Tmdb } from "./watchlist.ts"
 
 const config: Config = { tmdbApiKey: "tmdb", openRouterKey: "router", envSession: null }
 
-const heat = { id: 1, name: "Heat", poster: null, overview: "A heist." }
-const brick = { id: 2, name: "Brick", poster: null, overview: "A noir." }
+const heat = { id: 1, name: "Heat", poster: null, overview: "A heist.", year: 1995, genreIds: [80, 18] }
+const brick = { id: 2, name: "Brick", poster: null, overview: "A noir.", year: 2005, genreIds: [9648] }
 
 function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
   return {
@@ -26,6 +26,7 @@ function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
     },
     titleDetails: async (media, id) => ({ ...FAKE_DETAILS, id, link: `${media}-${id}` }),
     setWatchlist: async () => {},
+    genres: async () => [{ id: 80, name: "Crime" }],
     ...overrides,
   }
 }
@@ -143,6 +144,20 @@ test("excluded films are not offered again", async () => {
   })
   await connect(app)
   const response = await moodRequest(app, { mood: "noir", exclude: [1] })
+  assert.deepEqual(await response.json(), { film: brick, strength: null })
+  assert.ok(!offered.some((text) => text.startsWith("Heat")))
+})
+
+test("a genre filter keeps other films out of the offer", async () => {
+  const offered: string[] = []
+  const app = makeApp({
+    ask: () => async (criteria) => {
+      offered.push(...Object.values(criteria))
+      return { choice: "0" }
+    },
+  })
+  await connect(app)
+  const response = await moodRequest(app, { mood: "noir", filter: { genreIds: [9648], decades: [] } })
   assert.deepEqual(await response.json(), { film: brick, strength: null })
   assert.ok(!offered.some((text) => text.startsWith("Heat")))
 })

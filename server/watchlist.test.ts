@@ -13,8 +13,10 @@ test("a watchlist movie becomes a title and poster", () => {
     name: "Chronicle",
     poster: "/xENglsVIIWEEhhB5lgpy33tGcKI.jpg",
     overview: "",
+    year: null,
+    genreIds: [],
   })
-  assert.deepEqual(Object.keys(film ?? {}), ["id", "name", "poster", "overview"])
+  assert.deepEqual(Object.keys(film ?? {}), ["id", "name", "poster", "overview", "year", "genreIds"])
 })
 
 test("a synopsis is kept for mood matching", () => {
@@ -25,11 +27,13 @@ test("a synopsis is kept for mood matching", () => {
 })
 
 test("missing posters stay blank", () => {
-  assert.deepEqual(toFilm({ id: 3, title: "Haywire", poster_path: null }), {
+  assert.deepEqual(toFilm({ id: 3, title: "Haywire", poster_path: null, release_date: "2012-02-01", genre_ids: [878] }), {
     id: 3,
     name: "Haywire",
     poster: null,
     overview: "",
+    year: 2012,
+    genreIds: [878],
   })
   assert.equal(toFilm({ title: "  " }), null)
 })

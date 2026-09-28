@@ -3,6 +3,7 @@ import { Hono } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { stream } from "hono/streaming"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
+import { type FilmFilter, matchesFilter, NO_FILTER } from "../shared/filter.ts"
 import type { Film, FilmDetails, Media } from "../shared/types.ts"
 import type { Config } from "./config.ts"
 import { type Ask, MoodError, selectByMood, strengthOf } from "./mood.ts"
@@ -20,6 +21,16 @@ export type Deps = {
 
 export type AppEnv = { Variables: { session: Session } }
 
+function numberList(value: unknown): number[] {
+  return Array.isArray(value) ? value.filter((id): id is number => Number.isInteger(id)) : []
+}
+
+function filterFrom(value: unknown): FilmFilter {
+  if (!value || typeof value !== "object") return NO_FILTER
+  const record = value as { genreIds?: unknown; decades?: unknown }
+  return { genreIds: numberList(record.genreIds), decades: numberList(record.decades) }
+}
+
 function tmdbMessage(error: unknown) {
   return error instanceof TmdbError ? error.message : "TMDB could not complete that request."
 }
@@ -29,6 +40,7 @@ const MEDIA = new Set<Media>(["movie"])
 export function createApp(config: Config, deps: Deps) {
   const app = new Hono<AppEnv>()
   const details = createTtlCache<FilmDetails>({ ttlMs: 24 * 60 * 60 * 1000, maxEntries: 2000 })
+  const genreLists = createTtlCache<{ id: number; name: string }[]>({ ttlMs: 24 * 60 * 60 * 1000, maxEntries: 8 })
 
   app.use("/api/*", async (c, next) => {
     const stored = deps.sessions.get(LOCAL_SESSION)
@@ -111,15 +123,14 @@ export function createApp(config: Config, deps: Deps) {
     async (c) => {
       const session = c.get("session")
       if (!session.tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
-      const body = (await c.req.json().catch(() => null)) as { mood?: unknown; exclude?: unknown } | null
+      const body = (await c.req.json().catch(() => null)) as { mood?: unknown; exclude?: unknown; filter?: unknown } | null
       const mood = typeof body?.mood === "string" ? body.mood.trim() : ""
       if (!mood) return c.json({ error: "Enter a mood." }, 400)
       if (mood.length > 300) return c.json({ error: "Keep the mood to a sentence." }, 400)
-      const exclude = new Set(
-        Array.isArray(body?.exclude) ? body.exclude.filter((id): id is number => Number.isInteger(id)) : [],
-      )
+      const exclude = new Set(numberList(body?.exclude))
+      const filter = filterFrom(body?.filter)
       const films = await watchlistFor(session)
-      const candidates = films.filter((film) => !exclude.has(film.id))
+      const candidates = films.filter((film) => !exclude.has(film.id) && matchesFilter(film, filter))
       if (candidates.length === 0) return c.json({ match: false })
       try {
         const pick = await selectByMood(candidates, deps.ask(mood))
@@ -133,6 +144,17 @@ export function createApp(config: Config, deps: Deps) {
       }
     },
   )
+
+  app.get("/api/genres/:media", async (c) => {
+    if (!c.get("session").tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
+    const media = c.req.param("media") as Media
+    if (!MEDIA.has(media)) return c.json({ error: "Unknown title." }, 400)
+    const cached = genreLists.get(media)
+    if (cached) return c.json(cached)
+    const fresh = await deps.tmdb.genres(media)
+    genreLists.set(media, fresh)
+    return c.json(fresh)
+  })
 
   app.get("/api/titles/:media/:id", async (c) => {
     if (!c.get("session").tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)

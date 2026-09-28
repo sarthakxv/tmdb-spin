@@ -1,4 +1,11 @@
-export type Film = { id: number; name: string; poster: string | null; overview: string }
+export type Film = {
+  id: number
+  name: string
+  poster: string | null
+  overview: string
+  year: number | null
+  genreIds: number[]
+}
 
 export type Media = "movie"
 

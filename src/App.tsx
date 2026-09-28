@@ -1,6 +1,8 @@
 import { motion, useMotionValue, useReducedMotion } from "motion/react"
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
+import { type FilmFilter, matchesFilter, NO_FILTER } from "../shared/filter.ts"
 import { Carousel } from "./Carousel"
+import { FilterBar } from "./FilterBar"
 import { visitorRegion } from "./details"
 import { cn } from "./lib/cn"
 import { RevealPanel } from "./RevealPanel"
@@ -9,7 +11,7 @@ import { moodChips, MOOD_SUGGESTIONS, rememberMood } from "./moods"
 import { readPreference, writePreference } from "./preferences"
 import { shareText } from "./share"
 import { latchReel, missReel, primeReel, setMuted } from "./reel-audio"
-import { growRing, placePick, randomPick, RING_LIMIT } from "./sample"
+import { growRing, placePick, randomPick, RING_LIMIT, sampleFilms } from "./sample"
 import { frontIndex } from "./spin"
 import { tmdbLink, type Film, type FilmDetails, type Strength } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
@@ -52,6 +54,10 @@ export function App() {
   const reducedMotion = useReducedMotion()
   const [setup, setSetup] = useState<Setup>("loading")
   const [watchlist, setWatchlist] = useState<Film[]>([])
+  const [filter, setFilter] = useState<FilmFilter>(NO_FILTER)
+  const filterRef = useRef(filter)
+  filterRef.current = filter
+  const [genres, setGenres] = useState<{ id: number; name: string }[]>([])
   const [ring, setRing] = useState<Film[]>([])
   const ringRef = useRef(ring)
   ringRef.current = ring
@@ -101,7 +107,14 @@ export function App() {
         await readWatchlist(response, (batch) => {
           if (cancelled) return
           setWatchlist((current) => current.concat(batch))
-          setRing((current) => growRing(current, batch, Math.random, RING_LIMIT))
+          setRing((current) =>
+            growRing(
+              current,
+              batch.filter((film) => matchesFilter(film, filterRef.current)),
+              Math.random,
+              RING_LIMIT,
+            ),
+          )
           if (opened) return
           opened = true
           setSetup("ready")
@@ -127,6 +140,18 @@ export function App() {
       controller.abort()
     }
   }, [])
+
+  useEffect(() => {
+    if (setup !== "ready") return
+    const controller = new AbortController()
+    fetch("/api/genres/movie", { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<{ id: number; name: string }[]>) : []))
+      .then((data) => {
+        if (Array.isArray(data)) setGenres(data)
+      })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [setup])
 
   const finishSpin = useCallback(() => setPhase("revealed"), [])
   const beginSpin = useCallback(() => {
@@ -163,11 +188,21 @@ export function App() {
     setPhase("ready")
   }
 
+  function chooseFilter(next: FilmFilter) {
+    setFilter(next)
+    setRing(sampleFilms(watchlist.filter((film) => matchesFilter(film, next)), RING_LIMIT))
+    setSelectedIndex(null)
+    setPhase("ready")
+  }
+
   async function spin(override?: string) {
     if (ring.length === 0 || phase === "spinning" || phase === "closing" || matching) return
     const feeling = (override ?? mood).trim()
     if (!feeling) {
-      const film = randomPick(watchlist, selected?.id ?? null)
+      const film = randomPick(
+        watchlist.filter((item) => matchesFilter(item, filter)),
+        selected?.id ?? null,
+      )
       if (!film) return
       setStrength(null)
       const current = ringRef.current
@@ -190,7 +225,7 @@ export function App() {
       const response = await fetch("/api/mood", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mood: feeling, exclude }),
+        body: JSON.stringify({ mood: feeling, exclude, filter }),
       })
       const data = (await response.json()) as { film?: Film; match?: boolean; strength?: Strength | null; error?: string }
       if (response.status === 401) {
@@ -267,6 +302,7 @@ export function App() {
     await fetch("/api/disconnect", { method: "POST" }).catch(() => {})
     setWatchlist([])
     setRing([])
+    setFilter(NO_FILTER)
     setSelectedIndex(null)
     setPhase("ready")
     setError(null)
@@ -336,8 +372,13 @@ export function App() {
             </button>
           </div>
         )}
+        {setup === "ready" && watchlist.length > 0 && (
+          <FilterBar films={watchlist} genres={genres} filter={filter} onChange={chooseFilter} />
+        )}
         {setup === "ready" && ring.length === 0 && !error && (
-          <p className="max-w-sm px-6 text-center text-pretty text-neutral-300">Your watchlist is empty.</p>
+          <p className="max-w-sm px-6 text-center text-pretty text-neutral-300">
+            {watchlist.length > 0 ? "No films match these filters." : "Your watchlist is empty."}
+          </p>
         )}
         {showRing && (
           <motion.div

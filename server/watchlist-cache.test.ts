@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { createWatchlistCache } from "./watchlist-cache.ts"
 
-const heat = { id: 1, name: "Heat", poster: null, overview: "" }
+const heat = { id: 1, name: "Heat", poster: null, overview: "", year: 1995, genreIds: [80] }
 
 test("a cached watchlist is not fetched again", async () => {
   const cache = createWatchlistCache()
