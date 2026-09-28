@@ -7,7 +7,7 @@ import { growRing } from "./sample"
 import type { Film } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
 
-type Setup = "loading" | "key" | "connect" | "ready"
+type Setup = "loading" | "connect" | "ready"
 
 function WatchlistLoader() {
   const reduced = useReducedMotion()
@@ -55,15 +55,8 @@ export function App() {
       try {
         const health = (await fetch("/api/health", { signal: controller.signal }).then((response) =>
           response.json(),
-        )) as {
-          configured: boolean
-          connected: boolean
-        }
+        )) as { connected: boolean }
         if (cancelled) return
-        if (!health.configured) {
-          setSetup("key")
-          return
-        }
         if (!health.connected) {
           setSetup("connect")
           return
@@ -192,11 +185,6 @@ export function App() {
     >
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
         {setup === "loading" && !error && <WatchlistLoader />}
-        {setup === "key" && (
-          <p className="max-w-sm px-6 text-center text-pretty text-neutral-300">
-            Add TMDB_API_KEY to .env and restart.
-          </p>
-        )}
         {setup === "connect" && (
           <div className="flex flex-col items-center gap-6 px-6">
             <p className="max-w-sm text-center font-display text-4xl text-balance">Connect TMDB</p>

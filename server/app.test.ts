@@ -1,0 +1,103 @@
+import assert from "node:assert/strict"
+import test from "node:test"
+import { createApp, type Deps } from "./app.ts"
+import type { Config } from "./config.ts"
+import { memoryStore } from "./sessions.ts"
+import type { Tmdb } from "./watchlist.ts"
+
+const config: Config = { tmdbApiKey: "tmdb", openRouterKey: "router", envSession: null }
+
+const heat = { id: 1, name: "Heat", poster: null, overview: "A heist." }
+const brick = { id: 2, name: "Brick", poster: null, overview: "A noir." }
+
+function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
+  return {
+    authorizeUrl: (token, redirectTo) =>
+      `https://tmdb.test/authenticate/${token}?redirect_to=${encodeURIComponent(redirectTo)}`,
+    createRequestToken: async () => "tok-1",
+    createSession: async (token) => `sid-for-${token}`,
+    deleteSession: async () => {},
+    fetchWatchlist: async (_sessionId, onPage) => {
+      onPage?.([heat, brick])
+      return [heat, brick]
+    },
+    ...overrides,
+  }
+}
+
+function makeApp(overrides: Partial<Deps> = {}, configOverrides: Partial<Config> = {}) {
+  return createApp(
+    { ...config, ...configOverrides },
+    { tmdb: fakeTmdb(), ask: () => async () => "0", sessions: memoryStore(), ...overrides },
+  )
+}
+
+type App = ReturnType<typeof makeApp>
+
+async function connect(app: App) {
+  await app.request("/api/connect", { method: "POST" })
+  const back = await app.request("/api/auth/callback?request_token=tok-1&approved=true")
+  assert.equal(back.headers.get("location"), "/")
+}
+
+async function health(app: App) {
+  return (await app.request("/api/health")).json()
+}
+
+test("the app starts disconnected", async () => {
+  assert.deepEqual(await health(makeApp()), { connected: false })
+})
+
+test("approving TMDB connects", async () => {
+  const app = makeApp()
+  await connect(app)
+  assert.deepEqual(await health(app), { connected: true })
+})
+
+test("TMDB_SESSION_ID connects without approval", async () => {
+  assert.deepEqual(await health(makeApp({}, { envSession: "env-sid" })), { connected: true })
+})
+
+test("the approval link returns to this server", async () => {
+  const response = await makeApp().request("/api/connect", { method: "POST" })
+  const { url } = (await response.json()) as { url: string }
+  assert.ok(url.endsWith(encodeURIComponent("http://localhost/api/auth/callback")))
+})
+
+test("a request token this server did not issue is refused", async () => {
+  const unasked = await makeApp().request("/api/auth/callback?request_token=tok-1")
+  assert.equal(unasked.headers.get("location"), "/?auth=denied")
+  const app = makeApp()
+  await app.request("/api/connect", { method: "POST" })
+  const forged = await app.request("/api/auth/callback?request_token=other")
+  assert.equal(forged.headers.get("location"), "/?auth=denied")
+})
+
+test("a declined approval is reported", async () => {
+  const app = makeApp()
+  await app.request("/api/connect", { method: "POST" })
+  const response = await app.request("/api/auth/callback?request_token=tok-1&approved=false")
+  assert.equal(response.headers.get("location"), "/?auth=denied")
+})
+
+test("the watchlist needs a connection", async () => {
+  assert.equal((await makeApp().request("/api/watchlist")).status, 401)
+})
+
+test("the watchlist streams one line per page", async () => {
+  const app = makeApp()
+  await connect(app)
+  const response = await app.request("/api/watchlist")
+  assert.equal(response.headers.get("content-type"), "application/x-ndjson")
+  const lines = (await response.text()).trim().split("\n")
+  assert.deepEqual(JSON.parse(lines[0]!), { films: [heat, brick] })
+})
+
+test("an empty mood is refused", async () => {
+  const response = await makeApp().request("/api/mood", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mood: " ", films: [heat] }),
+  })
+  assert.equal(response.status, 400)
+})
