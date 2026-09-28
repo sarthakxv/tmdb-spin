@@ -4,13 +4,23 @@ let context: AudioContext | null = null
 let brown: AudioBuffer | null = null
 let white: AudioBuffer | null = null
 let active: { stop: () => void } | null = null
+let muted = false
+
+export function setMuted(value: boolean) {
+  muted = value
+  if (value) active?.stop()
+}
+
+export function isMuted() {
+  return muted
+}
 
 /** Max pawl clicks per second — the old 30+/sec rate is what smeared into white noise. */
 const MAX_TICK_RATE = 14
 const MIN_GAP = 1 / MAX_TICK_RATE
 
 function getContext() {
-  if (typeof window === "undefined" || typeof AudioContext === "undefined") return null
+  if (muted || typeof window === "undefined" || typeof AudioContext === "undefined") return null
   if (!context) context = new AudioContext()
   if (context.state === "suspended") void context.resume()
   if (!brown) brown = makeBrown(context)

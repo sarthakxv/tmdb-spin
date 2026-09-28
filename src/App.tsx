@@ -8,7 +8,7 @@ import { MoodChips } from "./MoodChips"
 import { moodChips, MOOD_SUGGESTIONS, rememberMood } from "./moods"
 import { readPreference, writePreference } from "./preferences"
 import { shareText } from "./share"
-import { latchReel, missReel, primeReel } from "./reel-audio"
+import { latchReel, missReel, primeReel, setMuted } from "./reel-audio"
 import { growRing, placePick, randomPick, RING_LIMIT } from "./sample"
 import { frontIndex } from "./spin"
 import { tmdbLink, type Film, type FilmDetails, type Strength } from "./types"
@@ -68,6 +68,7 @@ export function App() {
   const [picked, setPicked] = useState<{ mood: string; ids: number[] }>({ mood: "", ids: [] })
   const [strength, setStrength] = useState<Strength | null>(null)
   const [copied, setCopied] = useState(false)
+  const [muted, setMutedState] = useState(() => readPreference("muted", false))
 
   useEffect(() => {
     const denied = new URLSearchParams(window.location.search).get("auth") === "denied"
@@ -272,6 +273,8 @@ export function App() {
     setSetup("connect")
   }
 
+  useEffect(() => setMuted(muted), [muted])
+
   const selected = selectedIndex != null ? ring[selectedIndex] : null
   const selectedId = selected?.id ?? null
   const showing = phase === "spinning" || phase === "revealed"
@@ -297,7 +300,19 @@ export function App() {
       onClick={leaveResult}
     >
       {setup === "ready" && (
-        <div className="flex justify-end px-6 pt-4">
+        <div className="flex items-center justify-between px-6 pt-4">
+          <button
+            type="button"
+            aria-pressed={muted}
+            aria-label="Mute reel sound"
+            onClick={() => {
+              setMutedState(!muted)
+              writePreference("muted", !muted)
+            }}
+            className="rounded-full px-3 py-1.5 text-sm text-neutral-500 hover:text-neutral-200"
+          >
+            {muted ? "Sound off" : "Sound on"}
+          </button>
           <button type="button" onClick={() => void disconnect()} className="text-sm text-neutral-500 hover:text-neutral-300">
             Disconnect
           </button>
