@@ -1,9 +1,10 @@
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useMotionValue, useReducedMotion } from "motion/react"
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
 import { Carousel } from "./Carousel"
 import { cn } from "./lib/cn"
 import { latchReel, missReel, primeReel } from "./reel-audio"
-import { growRing } from "./sample"
+import { growRing, placePick, RING_LIMIT } from "./sample"
+import { frontIndex } from "./spin"
 import type { Film } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
 
@@ -32,6 +33,9 @@ export function App() {
   const reducedMotion = useReducedMotion()
   const [setup, setSetup] = useState<Setup>("loading")
   const [ring, setRing] = useState<Film[]>([])
+  const ringRef = useRef(ring)
+  ringRef.current = ring
+  const rotation = useMotionValue(0)
   const [phase, setPhase] = useState<"ready" | "closing" | "spinning" | "revealed">("ready")
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [spinId, setSpinId] = useState(0)
@@ -71,7 +75,7 @@ export function App() {
         }
         await readWatchlist(response, (batch) => {
           if (cancelled) return
-          setRing((current) => growRing(current, batch))
+          setRing((current) => growRing(current, batch, Math.random, RING_LIMIT))
           if (opened) return
           opened = true
           setSetup("ready")
@@ -170,11 +174,13 @@ export function App() {
         setError("Jev could not pick a movie.")
         return
       }
-      const found = ring.findIndex((film) => film.id === data.film!.id)
-      const index = found === -1 ? ring.length : found
-      if (found === -1) setRing((current) => [...current, data.film!])
+      const current = ringRef.current
+      const count = current.length
+      const back = count === 0 ? 0 : (frontIndex(rotation.get(), count) + Math.floor(count / 2)) % count
+      const placed = placePick(current, data.film, back)
+      setRing(placed.ring)
       latchReel()
-      setSelectedIndex(index)
+      setSelectedIndex(placed.index)
       setSpinId((value) => value + 1)
       setPhase("spinning")
     } catch {
@@ -241,6 +247,7 @@ export function App() {
               phase={phase}
               selectedIndex={selectedIndex}
               spinId={spinId}
+              rotation={rotation}
               onClosed={beginSpin}
               onSpinEnd={finishSpin}
             />

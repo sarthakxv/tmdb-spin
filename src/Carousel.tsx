@@ -12,6 +12,7 @@ type CarouselProps = {
   phase: Phase
   selectedIndex: number | null
   spinId: number
+  rotation: MotionValue<number>
   onClosed: () => void
   onSpinEnd: () => void
 }
@@ -38,8 +39,7 @@ function ringLayout(count: number, cardWidth: number) {
   return { radius, perspective: Math.max(1200, radius * 3.2) }
 }
 
-export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpinEnd }: CarouselProps) {
-  const rotation = useMotionValue(0)
+export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClosed, onSpinEnd }: CarouselProps) {
   const reveal = useMotionValue(0)
   const coverDrop = useMotionValue(0)
   const drag = useRef<{ id: number; x: number; t: number; velocity: number } | null>(null)
