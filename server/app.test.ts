@@ -4,7 +4,7 @@ import { createApp, type Deps } from "./app.ts"
 import type { Config } from "./config.ts"
 import { memoryStore } from "./sessions.ts"
 import { createWatchlistCache } from "./watchlist-cache.ts"
-import type { Tmdb } from "./watchlist.ts"
+import { TmdbError, type Tmdb } from "./watchlist.ts"
 
 const config: Config = { tmdbApiKey: "tmdb", openRouterKey: "router", envSession: null }
 
@@ -158,4 +158,47 @@ test("the watchlist is fetched once for the stream and the spin", async () => {
   await (await app.request("/api/watchlist")).text()
   await moodRequest(app, { mood: "tense" })
   assert.equal(fetches, 1)
+})
+
+test("disconnecting ends the TMDB session and forgets it locally", async () => {
+  const deleted: string[] = []
+  const app = makeApp({
+    tmdb: fakeTmdb({
+      deleteSession: async (sid) => {
+        deleted.push(sid)
+      },
+    }),
+  })
+  await connect(app)
+  const response = await app.request("/api/disconnect", { method: "POST" })
+  assert.deepEqual(await response.json(), { connected: false })
+  assert.deepEqual(deleted, ["sid-for-tok-1"])
+  assert.deepEqual(await health(app), { connected: false })
+})
+
+test("disconnecting still works when TMDB is down", async () => {
+  const app = makeApp({
+    tmdb: fakeTmdb({
+      deleteSession: async () => {
+        throw new Error("down")
+      },
+    }),
+  })
+  await connect(app)
+  const response = await app.request("/api/disconnect", { method: "POST" })
+  assert.equal(response.status, 200)
+})
+
+test("a revoked TMDB session sends the visitor back to Connect", async () => {
+  const app = makeApp({
+    tmdb: fakeTmdb({
+      fetchWatchlist: async () => {
+        throw new TmdbError("TMDB rejected the credentials.", 401)
+      },
+    }),
+  })
+  await connect(app)
+  const response = await moodRequest(app, { mood: "tense" })
+  assert.equal(response.status, 401)
+  assert.deepEqual(await health(app), { connected: false })
 })

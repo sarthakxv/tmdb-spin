@@ -79,8 +79,14 @@ export function App() {
         if (!cancelled && !opened) setSetup("ready")
       } catch (error) {
         if (cancelled || (error instanceof Error && error.name === "AbortError")) return
-        if (error instanceof WatchlistError) setError(error.message)
-        else if (!opened) setError("Could not reach the local server.")
+        if (error instanceof WatchlistError) {
+          setError(error.message)
+          if (error.message.includes("rejected the credentials")) {
+            setRing([])
+            setSetup("connect")
+            return
+          }
+        } else if (!opened) setError("Could not reach the local server.")
         if (!opened) setSetup("ready")
       }
     })()
@@ -144,8 +150,11 @@ export function App() {
       })
       const data = (await response.json()) as { film?: Film; match?: boolean; error?: string }
       if (response.status === 401) {
-        setError(data.error ?? "Connect TMDB to read the watchlist.")
+        setRing([])
+        setSelectedIndex(null)
+        setPhase("ready")
         setSetup("connect")
+        setError(data.error ?? "TMDB access ended. Connect again.")
         return
       }
       if (!response.ok) {
@@ -175,6 +184,15 @@ export function App() {
     }
   }
 
+  async function disconnect() {
+    await fetch("/api/disconnect", { method: "POST" }).catch(() => {})
+    setRing([])
+    setSelectedIndex(null)
+    setPhase("ready")
+    setError(null)
+    setSetup("connect")
+  }
+
   const selected = selectedIndex != null ? ring[selectedIndex] : null
   const showRing = setup === "ready" && ring.length > 0
 
@@ -183,6 +201,13 @@ export function App() {
       className={`flex h-dvh flex-col bg-neutral-950 font-sans text-neutral-100 ${phase === "revealed" ? "cursor-pointer" : ""}`}
       onClick={leaveResult}
     >
+      {setup === "ready" && (
+        <div className="flex justify-end px-6 pt-4">
+          <button type="button" onClick={() => void disconnect()} className="text-sm text-neutral-500 hover:text-neutral-300">
+            Disconnect
+          </button>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
         {setup === "loading" && !error && <WatchlistLoader />}
         {setup === "connect" && (

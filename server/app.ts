@@ -36,7 +36,21 @@ export function createApp(config: Config, deps: Deps) {
     await next()
   })
 
+  function forget(session: Session) {
+    deps.watchlists.drop(session.id)
+    deps.sessions.delete(session.id)
+  }
+
   app.get("/api/health", (c) => c.json({ connected: Boolean(c.get("session").tmdbSessionId) }))
+
+  app.post("/api/disconnect", async (c) => {
+    const session = c.get("session")
+    if (session.tmdbSessionId && session.tmdbSessionId !== config.envSession) {
+      await deps.tmdb.deleteSession(session.tmdbSessionId).catch(() => {})
+    }
+    forget(session)
+    return c.json({ connected: false })
+  })
 
   app.post("/api/connect", async (c) => {
     const requestToken = await deps.tmdb.createRequestToken()
@@ -80,6 +94,7 @@ export function createApp(config: Config, deps: Deps) {
       try {
         await watchlistFor(session, (films) => write({ films }))
       } catch (error) {
+        if (error instanceof TmdbError && error.status === 401) forget(session)
         write({ error: tmdbMessage(error) })
       }
       await queue
@@ -116,7 +131,12 @@ export function createApp(config: Config, deps: Deps) {
   )
 
   app.onError((error, c) => {
-    if (error instanceof TmdbError) return c.json({ error: error.message }, error.status === 401 ? 401 : 502)
+    if (error instanceof TmdbError && error.status === 401) {
+      const session = c.get("session")
+      if (session) forget(session)
+      return c.json({ error: "TMDB access ended. Connect again." }, 401)
+    }
+    if (error instanceof TmdbError) return c.json({ error: error.message }, 502)
     return c.json({ error: "Something went wrong." }, 500)
   })
 
