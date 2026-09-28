@@ -13,7 +13,7 @@ import { shareText } from "./share"
 import { latchReel, missReel, primeReel, setMuted } from "./reel-audio"
 import { growRing, placePick, randomPick, RING_LIMIT, sampleFilms } from "./sample"
 import { frontIndex } from "./spin"
-import { tmdbLink, type Film, type FilmDetails, type Strength } from "./types"
+import { tmdbLink, type Film, type FilmDetails, type Media, type Strength } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
 
 type Setup = "loading" | "connect" | "ready"
@@ -75,6 +75,7 @@ export function App() {
   const [strength, setStrength] = useState<Strength | null>(null)
   const [copied, setCopied] = useState(false)
   const [muted, setMutedState] = useState(() => readPreference("muted", false))
+  const [media, setMedia] = useState<Media>(() => (readPreference<string>("media", "movie") === "tv" ? "tv" : "movie"))
 
   useEffect(() => {
     const denied = new URLSearchParams(window.location.search).get("auth") === "denied"
@@ -83,6 +84,11 @@ export function App() {
       window.history.replaceState(null, "", "/")
     }
 
+    setWatchlist([])
+    setRing([])
+    setSelectedIndex(null)
+    setPhase("ready")
+    setPicked({ mood: "", ids: [] })
     const controller = new AbortController()
     let cancelled = false
     let opened = false
@@ -96,7 +102,7 @@ export function App() {
           setSetup("connect")
           return
         }
-        const response = await fetch("/api/watchlist", { signal: controller.signal })
+        const response = await fetch(`/api/watchlist?media=${media}`, { signal: controller.signal })
         if (cancelled) return
         if (!response.ok) {
           const data = (await response.json()) as { error?: string }
@@ -139,19 +145,19 @@ export function App() {
       cancelled = true
       controller.abort()
     }
-  }, [])
+  }, [media])
 
   useEffect(() => {
     if (setup !== "ready") return
     const controller = new AbortController()
-    fetch("/api/genres/movie", { signal: controller.signal })
+    fetch(`/api/genres/${media}`, { signal: controller.signal })
       .then((response) => (response.ok ? (response.json() as Promise<{ id: number; name: string }[]>) : []))
       .then((data) => {
         if (Array.isArray(data)) setGenres(data)
       })
       .catch(() => {})
     return () => controller.abort()
-  }, [setup])
+  }, [setup, media])
 
   const finishSpin = useCallback(() => setPhase("revealed"), [])
   const beginSpin = useCallback(() => {
@@ -225,7 +231,7 @@ export function App() {
       const response = await fetch("/api/mood", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mood: feeling, exclude, filter }),
+        body: JSON.stringify({ mood: feeling, exclude, filter, media }),
       })
       const data = (await response.json()) as { film?: Film; match?: boolean; strength?: Strength | null; error?: string }
       if (response.status === 401) {
@@ -244,7 +250,13 @@ export function App() {
       if (data.match === false) {
         missReel()
         setPicked({ mood: key, ids: [] })
-        setError(exclude.length > 0 ? "Nothing else in your watchlist fits this mood." : "Your watchlist has no movie for current mood")
+        setError(
+          exclude.length > 0
+            ? "Nothing else in your watchlist fits this mood."
+            : media === "tv"
+              ? "Your watchlist has no show for this mood."
+              : "Your watchlist has no movie for this mood.",
+        )
         return
       }
       if (!data.film) {
@@ -274,7 +286,7 @@ export function App() {
 
   async function sharePick() {
     if (!selected) return
-    const url = details?.link ?? tmdbLink("movie", selected.id)
+    const url = details?.link ?? tmdbLink(selected.media, selected.id)
     const text = shareText(selected, mood)
     if (navigator.share) {
       await navigator.share({ title: selected.name, text, url }).catch(() => {})
@@ -286,7 +298,7 @@ export function App() {
 
   async function removeSelected() {
     if (!selected) return
-    const response = await fetch(`/api/watchlist/movie/${selected.id}`, { method: "DELETE" }).catch(() => null)
+    const response = await fetch(`/api/watchlist/${selected.media}/${selected.id}`, { method: "DELETE" }).catch(() => null)
     if (!response?.ok) {
       setError("TMDB could not remove that film.")
       return
@@ -320,7 +332,7 @@ export function App() {
     setCopied(false)
     if (selectedId == null || !showing) return
     const controller = new AbortController()
-    fetch(`/api/titles/movie/${selectedId}?region=${visitorRegion()}`, { signal: controller.signal })
+    fetch(`/api/titles/${selected?.media ?? "movie"}/${selectedId}?region=${visitorRegion()}`, { signal: controller.signal })
       .then((response) => (response.ok ? (response.json() as Promise<FilmDetails>) : null))
       .then((data) => {
         if (data) setDetails(data)
@@ -349,6 +361,23 @@ export function App() {
           >
             {muted ? "Sound off" : "Sound on"}
           </button>
+          <div role="radiogroup" aria-label="Watchlist" className="flex rounded-full border border-neutral-800 p-1 text-sm">
+            {(["movie", "tv"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={media === option}
+                onClick={() => {
+                  setMedia(option)
+                  writePreference("media", option)
+                }}
+                className={cn("rounded-full px-4 py-1.5", media === option ? "bg-white text-neutral-950" : "text-neutral-400")}
+              >
+                {option === "movie" ? "Movies" : "TV"}
+              </button>
+            ))}
+          </div>
           <button type="button" onClick={() => void disconnect()} className="text-sm text-neutral-500 hover:text-neutral-300">
             Disconnect
           </button>

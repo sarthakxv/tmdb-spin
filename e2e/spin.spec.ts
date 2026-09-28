@@ -45,7 +45,7 @@ test("a mood nothing fits says so", async ({ page }) => {
   await page.getByRole("button", { name: "Connect", exact: true }).click()
   await page.getByRole("textbox", { name: "Mood", exact: true }).fill("western")
   await page.getByRole("button", { name: "Spin" }).click()
-  await expect(page.getByRole("alert")).toContainText("no movie")
+  await expect(page.getByRole("alert")).toContainText(/no (movie|show)/)
 })
 
 test("a watched film can be removed", async ({ page }) => {
@@ -65,6 +65,14 @@ test("filtering to one decade keeps other films out", async ({ page }) => {
   await page.getByRole("button", { name: "1990s" }).click()
   await page.getByRole("button", { name: "Surprise me" }).click()
   await expect(page.getByRole("heading", { name: "Heat" })).toBeVisible()
+})
+
+test("the TV watchlist spins separately", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("radio", { name: "TV" }).click()
+  await page.getByRole("button", { name: "Surprise me" }).click()
+  await expect(page.getByRole("heading", { name: "Breaking Bad" })).toBeVisible()
 })
 
 test("disconnecting returns to Connect", async ({ page }) => {

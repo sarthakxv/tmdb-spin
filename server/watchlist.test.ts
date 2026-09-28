@@ -3,11 +3,14 @@ import test from "node:test"
 import { collectWatchlist, createTmdb, retryDelay, TmdbError, toDetails, toFilm } from "./watchlist.ts"
 
 test("a watchlist movie becomes a title and poster", () => {
-  const film = toFilm({
-    id: 1,
-    title: "Chronicle",
-    poster_path: "/xENglsVIIWEEhhB5lgpy33tGcKI.jpg",
-  })
+  const film = toFilm(
+    {
+      id: 1,
+      title: "Chronicle",
+      poster_path: "/xENglsVIIWEEhhB5lgpy33tGcKI.jpg",
+    },
+    "movie",
+  )
   assert.deepEqual(film, {
     id: 1,
     name: "Chronicle",
@@ -15,27 +18,29 @@ test("a watchlist movie becomes a title and poster", () => {
     overview: "",
     year: null,
     genreIds: [],
+    media: "movie",
   })
-  assert.deepEqual(Object.keys(film ?? {}), ["id", "name", "poster", "overview", "year", "genreIds"])
+  assert.deepEqual(Object.keys(film ?? {}), ["id", "name", "poster", "overview", "year", "genreIds", "media"])
 })
 
 test("a synopsis is kept for mood matching", () => {
   assert.equal(
-    toFilm({ id: 2, title: "Past Lives", poster_path: null, overview: "  Two people meet again. " })?.overview,
+    toFilm({ id: 2, title: "Past Lives", poster_path: null, overview: "  Two people meet again. " }, "movie")?.overview,
     "Two people meet again.",
   )
 })
 
 test("missing posters stay blank", () => {
-  assert.deepEqual(toFilm({ id: 3, title: "Haywire", poster_path: null, release_date: "2012-02-01", genre_ids: [878] }), {
+  assert.deepEqual(toFilm({ id: 3, title: "Haywire", poster_path: null, release_date: "2012-02-01", genre_ids: [878] }, "movie"), {
     id: 3,
     name: "Haywire",
     poster: null,
     overview: "",
     year: 2012,
     genreIds: [878],
+    media: "movie",
   })
-  assert.equal(toFilm({ title: "  " }), null)
+  assert.equal(toFilm({ title: "  " }, "movie"), null)
 })
 
 test("pages are walked until the watchlist ends", async () => {
@@ -44,7 +49,7 @@ test("pages are walked until the watchlist ends", async () => {
       return { total_pages: 2, results: [{ id: 1, title: "Chronicle", poster_path: "/a.jpg" }] }
     }
     return { total_pages: 2, results: [{ id: 2, title: "Haywire", poster_path: null }] }
-  })
+  }, "movie")
   assert.deepEqual(
     films.map((film) => film.name),
     ["Chronicle", "Haywire"],
@@ -63,6 +68,7 @@ test("a page is delivered before the next page is requested", async () => {
       await gate
       return { total_pages: 2, results: [{ id: 2, title: "Haywire", poster_path: null }] }
     },
+    "movie",
     (pageFilms) => {
       delivered.push(pageFilms.map((film) => film.name).join(","))
       if (delivered.length === 1) releaseNext()
@@ -91,7 +97,7 @@ function scripted(...responses: Response[]) {
 }
 
 test("a movie without an id is skipped", () => {
-  assert.equal(toFilm({ title: "Heat" }), null)
+  assert.equal(toFilm({ title: "Heat" }, "movie"), null)
 })
 
 test("a rate-limited request waits for Retry-After and tries again", async () => {
@@ -193,6 +199,26 @@ test("removing posts watchlist false for the account", async () => {
   assert.ok(calls[1]!.url.startsWith("https://api.themoviedb.org/3/account/42/watchlist"))
   assert.equal(calls[1]!.init?.method, "POST")
   assert.equal(calls[1]!.init?.body, JSON.stringify({ media_type: "movie", media_id: 949, watchlist: false }))
+})
+
+test("a TV show uses its name and first air date", () => {
+  const show = toFilm({ id: 1399, name: "Game of Thrones", first_air_date: "2011-04-17", genre_ids: [18] }, "tv")
+  assert.equal(show?.name, "Game of Thrones")
+  assert.equal(show?.year, 2011)
+  assert.equal(show?.media, "tv")
+})
+
+test("the TV watchlist has its own endpoint", async () => {
+  const { fetch, calls } = scripted(reply(200, { id: 42 }), reply(200, { total_pages: 1, results: [] }))
+  await createTmdb("key", { fetch }).fetchWatchlist("sid", "tv")
+  assert.ok(calls[1]!.url.startsWith("https://api.themoviedb.org/3/account/42/watchlist/tv"))
+})
+
+test("TV details use the episode runtime", () => {
+  const details = toDetails({ id: 1399, first_air_date: "2011-04-17", episode_run_time: [57] }, "tv", "US")
+  assert.equal(details.year, 2011)
+  assert.equal(details.runtime, 57)
+  assert.equal(details.link, "https://www.themoviedb.org/tv/1399")
 })
 
 test("the approval link returns to the app", () => {

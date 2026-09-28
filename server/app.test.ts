@@ -10,8 +10,8 @@ import { TmdbError, type Tmdb } from "./watchlist.ts"
 
 const config: Config = { tmdbApiKey: "tmdb", openRouterKey: "router", envSession: null }
 
-const heat = { id: 1, name: "Heat", poster: null, overview: "A heist.", year: 1995, genreIds: [80, 18] }
-const brick = { id: 2, name: "Brick", poster: null, overview: "A noir.", year: 2005, genreIds: [9648] }
+const heat = { id: 1, name: "Heat", poster: null, overview: "A heist.", year: 1995, genreIds: [80, 18], media: "movie" as const }
+const brick = { id: 2, name: "Brick", poster: null, overview: "A noir.", year: 2005, genreIds: [9648], media: "movie" as const }
 
 function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
   return {
@@ -20,7 +20,7 @@ function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
     createRequestToken: async () => "tok-1",
     createSession: async (token) => `sid-for-${token}`,
     deleteSession: async () => {},
-    fetchWatchlist: async (_sessionId, onPage) => {
+    fetchWatchlist: async (_sessionId, _media, onPage) => {
       onPage?.([heat, brick])
       return [heat, brick]
     },
@@ -88,6 +88,25 @@ test("a declined approval is reported", async () => {
 
 test("the watchlist needs a connection", async () => {
   assert.equal((await makeApp().request("/api/watchlist")).status, 401)
+})
+
+test("movie and TV watchlists are cached apart", async () => {
+  const seen: string[] = []
+  const app = makeApp({
+    tmdb: fakeTmdb({
+      fetchWatchlist: async (_sid, media, onPage) => {
+        seen.push(media)
+        const films = media === "tv" ? [{ ...heat, id: 9, name: "Show", media: "tv" as const }] : [heat]
+        onPage?.(films)
+        return films
+      },
+    }),
+  })
+  await connect(app)
+  await (await app.request("/api/watchlist?media=movie")).text()
+  await (await app.request("/api/watchlist?media=tv")).text()
+  await (await app.request("/api/watchlist?media=movie")).text()
+  assert.deepEqual(seen, ["movie", "tv"])
 })
 
 test("the watchlist streams one line per page", async () => {
@@ -166,7 +185,7 @@ test("the watchlist is fetched once for the stream and the spin", async () => {
   let fetches = 0
   const app = makeApp({
     tmdb: fakeTmdb({
-      fetchWatchlist: async (_sid, onPage) => {
+      fetchWatchlist: async (_sid, _media, onPage) => {
         fetches += 1
         onPage?.([heat])
         return [heat]

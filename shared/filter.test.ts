@@ -2,8 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { decadesOf, matchesFilter, NO_FILTER } from "./filter.ts"
 
-const heat = { id: 1, name: "Heat", poster: null, overview: "", year: 1995, genreIds: [80, 18] }
-const brick = { id: 2, name: "Brick", poster: null, overview: "", year: 2005, genreIds: [9648] }
+const heat = { id: 1, name: "Heat", poster: null, overview: "", year: 1995, genreIds: [80, 18], media: "movie" as const }
+const brick = { id: 2, name: "Brick", poster: null, overview: "", year: 2005, genreIds: [9648], media: "movie" as const }
 
 test("no filter keeps every film", () => {
   assert.equal(matchesFilter(heat, NO_FILTER), true)

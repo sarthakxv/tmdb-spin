@@ -8,6 +8,8 @@ export type WatchlistMovie = {
   poster_path?: string | null
   overview?: string | null
   release_date?: string
+  first_air_date?: string
+  name?: string
   genre_ids?: number[]
 }
 
@@ -35,21 +37,24 @@ export function applyAuth(url: URL, headers: Record<string, string>, apiKey: str
   else url.searchParams.set("api_key", apiKey)
 }
 
-export function toFilm(movie: WatchlistMovie): Film | null {
-  const name = movie.title?.trim()
+export function toFilm(movie: WatchlistMovie, media: Media): Film | null {
+  const name = (movie.title ?? movie.name)?.trim()
   if (!name || typeof movie.id !== "number") return null
+  const date = movie.release_date ?? movie.first_air_date
   return {
     id: movie.id,
     name,
     poster: movie.poster_path || null,
     overview: movie.overview?.trim() ?? "",
-    year: movie.release_date ? Number(movie.release_date.slice(0, 4)) || null : null,
+    year: date ? Number(date.slice(0, 4)) || null : null,
     genreIds: movie.genre_ids ?? [],
+    media,
   }
 }
 
 export async function collectWatchlist(
   fetchPage: (page: number) => Promise<WatchlistPage>,
+  media: Media,
   onPage?: (films: Film[]) => void,
 ): Promise<Film[]> {
   const films: Film[] = []
@@ -60,7 +65,7 @@ export async function collectWatchlist(
     totalPages = data.total_pages ?? 1
     const pageFilms: Film[] = []
     for (const movie of data.results ?? []) {
-      const film = toFilm(movie)
+      const film = toFilm(movie, media)
       if (!film) continue
       films.push(film)
       pageFilms.push(film)
@@ -86,7 +91,9 @@ type RawProviders = { link?: string; flatrate?: { provider_name: string; logo_pa
 export type RawDetails = {
   id: number
   release_date?: string
+  first_air_date?: string
   runtime?: number | null
+  episode_run_time?: number[]
   vote_average?: number
   vote_count?: number
   genres?: { name: string }[]
@@ -96,7 +103,8 @@ export type RawDetails = {
 }
 
 export function toDetails(raw: RawDetails, media: Media, region: string): FilmDetails {
-  const year = raw.release_date ? Number(raw.release_date.slice(0, 4)) || null : null
+  const date = raw.release_date ?? raw.first_air_date
+  const year = date ? Number(date.slice(0, 4)) || null : null
   const trailers = (raw.videos?.results ?? []).filter(
     (video) => video.site === "YouTube" && video.type === "Trailer" && video.key,
   )
@@ -106,7 +114,7 @@ export function toDetails(raw: RawDetails, media: Media, region: string): FilmDe
   return {
     id: raw.id,
     year,
-    runtime: raw.runtime || null,
+    runtime: raw.runtime || raw.episode_run_time?.[0] || null,
     rating: rated ? Math.round(raw.vote_average! * 10) / 10 : null,
     genres: (raw.genres ?? []).map((genre) => genre.name).slice(0, 3),
     overview: raw.overview?.trim() ?? "",
@@ -125,7 +133,7 @@ export type Tmdb = {
   createRequestToken(): Promise<string>
   createSession(requestToken: string): Promise<string>
   deleteSession(sessionId: string): Promise<void>
-  fetchWatchlist(sessionId: string, onPage?: (films: Film[]) => void): Promise<Film[]>
+  fetchWatchlist(sessionId: string, media: Media, onPage?: (films: Film[]) => void): Promise<Film[]>
   titleDetails(media: Media, id: number, region: string): Promise<FilmDetails>
   setWatchlist(sessionId: string, media: Media, id: number, onList: boolean): Promise<void>
   genres(media: Media): Promise<{ id: number; name: string }[]>
@@ -209,11 +217,13 @@ export function createTmdb(apiKey: string, options: TmdbOptions = {}): Tmdb {
         body: { media_type: media, media_id: id, watchlist: onList },
       })
     },
-    async fetchWatchlist(sessionId, onPage) {
+    async fetchWatchlist(sessionId, media, onPage) {
       const account = await call<{ id?: number }>("/3/account", { sessionId })
       if (!account.id) throw new TmdbError("TMDB did not return an account.", 502)
+      const list = media === "tv" ? "tv" : "movies"
       return collectWatchlist(
-        (page) => call<WatchlistPage>(`/3/account/${account.id}/watchlist/movies`, { sessionId, page }),
+        (page) => call<WatchlistPage>(`/3/account/${account.id}/watchlist/${list}`, { sessionId, page }),
+        media,
         onPage,
       )
     },

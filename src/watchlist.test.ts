@@ -15,8 +15,8 @@ function streamResponse(chunks: string[]) {
   )
 }
 
-const chronicle: Film = { id: 1, name: "Chronicle", poster: null, overview: "", year: 2012, genreIds: [] }
-const haywire: Film = { id: 2, name: "Haywire", poster: null, overview: "", year: null, genreIds: [] }
+const chronicle: Film = { id: 1, name: "Chronicle", poster: null, overview: "", year: 2012, genreIds: [], media: "movie" }
+const haywire: Film = { id: 2, name: "Haywire", poster: null, overview: "", year: null, genreIds: [], media: "movie" }
 
 test("films arrive page by page, including a line split across chunks", async () => {
   const seen: Film[][] = []

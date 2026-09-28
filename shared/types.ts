@@ -5,9 +5,10 @@ export type Film = {
   overview: string
   year: number | null
   genreIds: number[]
+  media: Media
 }
 
-export type Media = "movie"
+export type Media = "movie" | "tv"
 
 export type Strength = "strong" | "good" | "loose"
 

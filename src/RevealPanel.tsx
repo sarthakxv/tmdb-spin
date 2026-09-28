@@ -50,7 +50,7 @@ export function RevealPanel({ film, details, strength, onBack, children }: Revea
             Trailer
           </a>
         )}
-        <a href={details?.link ?? tmdbLink("movie", film.id)} target="_blank" rel="noreferrer" className={action}>
+        <a href={details?.link ?? tmdbLink(film.media, film.id)} target="_blank" rel="noreferrer" className={action}>
           TMDB
         </a>
         <button type="button" onClick={onBack} className={action}>

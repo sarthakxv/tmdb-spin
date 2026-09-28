@@ -35,7 +35,11 @@ function tmdbMessage(error: unknown) {
   return error instanceof TmdbError ? error.message : "TMDB could not complete that request."
 }
 
-const MEDIA = new Set<Media>(["movie"])
+const MEDIA = new Set<Media>(["movie", "tv"])
+
+function mediaFrom(value: unknown): Media {
+  return value === "tv" ? "tv" : "movie"
+}
 
 export function createApp(config: Config, deps: Deps) {
   const app = new Hono<AppEnv>()
@@ -53,7 +57,8 @@ export function createApp(config: Config, deps: Deps) {
   })
 
   function forget(session: Session) {
-    deps.watchlists.drop(session.id)
+    deps.watchlists.drop(`${session.id}:movie`)
+    deps.watchlists.drop(`${session.id}:tv`)
     deps.sessions.delete(session.id)
   }
 
@@ -90,16 +95,18 @@ export function createApp(config: Config, deps: Deps) {
     }
   })
 
-  function watchlistFor(session: Session, onPage?: (films: Film[]) => void) {
+  function watchlistFor(session: Session, media: Media, onPage?: (films: Film[]) => void) {
     const tmdbSessionId = session.tmdbSessionId
     if (!tmdbSessionId) throw new TmdbError("Connect TMDB to read the watchlist.", 401)
-    return deps.watchlists.load(session.id, (page) => deps.tmdb.fetchWatchlist(tmdbSessionId, page), onPage)
+    const key = `${session.id}:${media}`
+    return deps.watchlists.load(key, (page) => deps.tmdb.fetchWatchlist(tmdbSessionId, media, page), onPage)
   }
 
   app.get("/api/watchlist", (c) => {
     const session = c.get("session")
     if (!session.tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
-    if (c.req.query("refresh") === "1") deps.watchlists.drop(session.id)
+    const media = mediaFrom(c.req.query("media"))
+    if (c.req.query("refresh") === "1") deps.watchlists.drop(`${session.id}:${media}`)
     c.header("content-type", "application/x-ndjson")
     c.header("cache-control", "no-cache, no-transform")
     return stream(c, async (out) => {
@@ -108,7 +115,7 @@ export function createApp(config: Config, deps: Deps) {
         queue = queue.then(() => out.write(`${JSON.stringify(line)}\n`)).then(() => {})
       }
       try {
-        await watchlistFor(session, (films) => write({ films }))
+        await watchlistFor(session, media, (films) => write({ films }))
       } catch (error) {
         if (error instanceof TmdbError && error.status === 401) forget(session)
         write({ error: tmdbMessage(error) })
@@ -123,13 +130,18 @@ export function createApp(config: Config, deps: Deps) {
     async (c) => {
       const session = c.get("session")
       if (!session.tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
-      const body = (await c.req.json().catch(() => null)) as { mood?: unknown; exclude?: unknown; filter?: unknown } | null
+      const body = (await c.req.json().catch(() => null)) as {
+        mood?: unknown
+        exclude?: unknown
+        filter?: unknown
+        media?: unknown
+      } | null
       const mood = typeof body?.mood === "string" ? body.mood.trim() : ""
       if (!mood) return c.json({ error: "Enter a mood." }, 400)
       if (mood.length > 300) return c.json({ error: "Keep the mood to a sentence." }, 400)
       const exclude = new Set(numberList(body?.exclude))
       const filter = filterFrom(body?.filter)
-      const films = await watchlistFor(session)
+      const films = await watchlistFor(session, mediaFrom(body?.media))
       const candidates = films.filter((film) => !exclude.has(film.id) && matchesFilter(film, filter))
       if (candidates.length === 0) return c.json({ match: false })
       try {
@@ -178,8 +190,9 @@ export function createApp(config: Config, deps: Deps) {
     const id = Number(c.req.param("id"))
     if (!MEDIA.has(media) || !Number.isInteger(id) || id <= 0) return c.json({ error: "Unknown title." }, 400)
     await deps.tmdb.setWatchlist(session.tmdbSessionId, media, id, false)
-    const cached = deps.watchlists.peek(session.id)
-    if (cached) deps.watchlists.set(session.id, cached.filter((film) => film.id !== id))
+    const key = `${session.id}:${media}`
+    const cached = deps.watchlists.peek(key)
+    if (cached) deps.watchlists.set(key, cached.filter((film) => film.id !== id))
     return c.json({ removed: true })
   })
 
