@@ -1,5 +1,6 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue } from "motion/react"
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { posterLarge, posterSrcSet, preloadPoster } from "./posters.ts"
 import { followReel } from "./reel-audio"
 import type { Film } from "./types"
 import { CENTER_SCALE, coverScale, degreesFromFront, targetRotation } from "./spin"
@@ -11,6 +12,7 @@ type CarouselProps = {
   phase: Phase
   selectedIndex: number | null
   spinId: number
+  rotation: MotionValue<number>
   onClosed: () => void
   onSpinEnd: () => void
 }
@@ -37,12 +39,13 @@ function ringLayout(count: number, cardWidth: number) {
   return { radius, perspective: Math.max(1200, radius * 3.2) }
 }
 
-export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpinEnd }: CarouselProps) {
-  const rotation = useMotionValue(0)
+export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClosed, onSpinEnd }: CarouselProps) {
   const reveal = useMotionValue(0)
   const coverDrop = useMotionValue(0)
   const drag = useRef<{ id: number; x: number; t: number; velocity: number } | null>(null)
   const coast = useRef<{ stop: () => void } | null>(null)
+  const manualStop = useRef<(() => void) | null>(null)
+  const manualIdle = useRef<number | null>(null)
   const { width, height } = useViewport()
   const cardWidth = Math.max(104, Math.min(156, width * 0.2))
   const cardHeight = cardWidth * 1.5
@@ -78,11 +81,12 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
 
     let stopReel: (() => void) | null = null
     const spin = () => {
+      preloadPoster(films[selectedIndex]?.poster ?? null)
       stopReel = reduced ? null : followReel(rotation, films.length)
-      const target = targetRotation(rotation.get(), selectedIndex, films.length)
+      const target = targetRotation(rotation.get(), selectedIndex, films.length, 3)
       current = animate(rotation, target, {
-        duration: reduced ? 0 : 3.4,
-        ease: "easeOut",
+        duration: reduced ? 0 : 5.8,
+        ease: [0.2, 0.65, 0.3, 1],
         onComplete: () => {
           stopReel?.()
           stopReel = null
@@ -141,9 +145,45 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
     coast.current = null
   }
 
+  function stopManualAudio() {
+    if (manualIdle.current !== null) {
+      window.clearTimeout(manualIdle.current)
+      manualIdle.current = null
+    }
+    manualStop.current?.()
+    manualStop.current = null
+  }
+
+  function startManualAudio() {
+    if (phase !== "ready" || films.length < 2) return
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    if (manualIdle.current !== null) {
+      window.clearTimeout(manualIdle.current)
+      manualIdle.current = null
+    }
+    if (!manualStop.current) {
+      manualStop.current = followReel(rotation, films.length, { endClack: false })
+    }
+  }
+
+  function scheduleManualStop(delay = 400) {
+    if (manualIdle.current !== null) window.clearTimeout(manualIdle.current)
+    manualIdle.current = window.setTimeout(stopManualAudio, delay)
+  }
+
+  // Manual follower shares followReel's singleton slot, so starting the spin
+  // silences it; still drop our handle so a stale stop can't fire later.
+  useEffect(() => {
+    if (phase !== "ready") stopManualAudio()
+  }, [phase])
+
+  useEffect(() => stopManualAudio, [])
+
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (phase !== "ready" || films.length < 2 || reveal.get() > 0.02) return
     stopCoast()
+    startManualAudio()
+    scheduleManualStop(800)
     drag.current = { id: event.pointerId, x: event.clientX, t: event.timeStamp, velocity: 0 }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -157,15 +197,55 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
     state.x = event.clientX
     state.t = event.timeStamp
     rotation.set(rotation.get() + dx * 0.5)
+    startManualAudio()
+    scheduleManualStop(400)
   }
+
+  function stepReel(direction: number) {
+    if (phase !== "ready" || films.length < 2 || direction === 0) return
+    stopCoast()
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (!reduced) startManualAudio()
+    coast.current = animate(rotation, rotation.get() + direction * (360 / films.length), {
+      duration: reduced ? 0 : 0.3,
+      ease: "easeOut",
+      onComplete: stopManualAudio,
+    })
+  }
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      const target = event.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        if (target.value.length > 0) return
+      }
+      const direction = event.key === "ArrowRight" ? -1 : event.key === "ArrowLeft" ? 1 : 0
+      if (!direction) return
+      event.preventDefault()
+      stepReel(direction)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  })
 
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const state = drag.current
     if (!state || event.pointerId !== state.id) return
     drag.current = null
     const extra = Math.max(-540, Math.min(540, state.velocity * 0.5 * 420))
-    if (Math.abs(extra) < 12) return
-    coast.current = animate(rotation, rotation.get() + extra, { duration: 0.85, ease: "easeOut" })
+    if (Math.abs(extra) < 12) {
+      scheduleManualStop(250)
+      return
+    }
+    if (manualIdle.current !== null) {
+      window.clearTimeout(manualIdle.current)
+      manualIdle.current = null
+    }
+    coast.current = animate(rotation, rotation.get() + extra, {
+      duration: 0.85,
+      ease: "easeOut",
+      onComplete: stopManualAudio,
+    })
   }
 
   const canDrag = phase === "ready" && films.length > 1
@@ -175,9 +255,11 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
   return (
     <div className="relative h-full w-full">
       <div
-        className={`h-full w-full overflow-hidden touch-none ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`relative z-0 h-full w-full overflow-hidden touch-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-neutral-500 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
         role="group"
+        aria-roledescription="carousel"
         aria-label="Watchlist reel"
+        tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -190,13 +272,14 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
           >
             {films.map((film, index) => (
               <PosterCard
-                key={`${film.name}-${index}`}
+                key={film.id}
                 film={film}
                 index={index}
                 count={films.length}
                 rotation={rotation}
                 reveal={reveal}
                 selected={index === selectedIndex}
+                revealed={index === selectedIndex && phase === "revealed"}
                 radius={radius}
                 cardWidth={cardWidth}
                 cardHeight={cardHeight}
@@ -206,6 +289,26 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
           </div>
         </div>
       </div>
+      {canDrag && (
+        <>
+          <button
+            type="button"
+            aria-label="Previous film"
+            onClick={() => stepReel(1)}
+            className="absolute top-1/2 left-4 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-600 bg-neutral-950/80 text-3xl leading-none text-neutral-100 hover:border-neutral-300"
+          >
+            <span aria-hidden>‹</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Next film"
+            onClick={() => stepReel(-1)}
+            className="absolute top-1/2 right-4 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-600 bg-neutral-950/80 text-3xl leading-none text-neutral-100 hover:border-neutral-300"
+          >
+            <span aria-hidden>›</span>
+          </button>
+        </>
+      )}
       {selected && (
         <motion.div
           className="pointer-events-none absolute left-1/2 z-10"
@@ -228,6 +331,7 @@ function PosterCard({
   rotation,
   reveal,
   selected,
+  revealed,
   radius,
   cardWidth,
   cardHeight,
@@ -239,6 +343,7 @@ function PosterCard({
   rotation: MotionValue<number>
   reveal: MotionValue<number>
   selected: boolean
+  revealed: boolean
   radius: number
   cardWidth: number
   cardHeight: number
@@ -284,9 +389,12 @@ function PosterCard({
     >
       {film.poster && !failed ? (
         <img
-          src={film.poster}
+          src={revealed ? posterLarge(film.poster) : `https://image.tmdb.org/t/p/w342${film.poster}`}
+          srcSet={revealed ? undefined : posterSrcSet(film.poster)}
+          sizes={`${Math.round(cardWidth)}px`}
           alt=""
           draggable={false}
+          decoding="async"
           className="size-full object-cover"
           onError={() => setFailed(true)}
         />

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { growRing, sampleFilms } from "./sample.ts"
+import { growRing, placePick, randomPick, sampleFilms } from "./sample.ts"
 import { coverScale, frontIndex, targetRotation } from "./spin.ts"
 
 test("a spin lands on the chosen card", () => {
@@ -39,4 +39,40 @@ test("later watchlist pages join the ring without moving films already on it", (
   assert.deepEqual(grown.slice(0, opened.length), opened)
   assert.deepEqual(grown.slice(opened.length), page2)
   assert.equal(grown.length, page1.length + page2.length)
+})
+
+test("the ring stops growing at its limit", () => {
+  const ring = growRing(growRing([], ["a", "b"], () => 0, 3), ["c", "d"], () => 0, 3)
+  assert.equal(ring.length, 3)
+})
+
+test("a pick already on the ring stays where it is", () => {
+  const films = [
+    { id: 1, name: "Heat" },
+    { id: 2, name: "Brick" },
+  ]
+  assert.deepEqual(placePick(films, films[1]!, 0), { ring: films, index: 1 })
+})
+
+test("a pick outside a full ring replaces the card at the back", () => {
+  const ring = Array.from({ length: 3 }, (_, id) => ({ id, name: `Film ${id}` }))
+  const outside = { id: 99, name: "Outside" }
+  const placed = placePick(ring, outside, 1, 3)
+  assert.equal(placed.ring.length, 3)
+  assert.equal(placed.index, 1)
+  assert.equal(placed.ring[1]!.id, 99)
+})
+
+test("a random pick avoids the last film when it can", () => {
+  const films = [{ id: 1 }, { id: 2 }]
+  assert.equal(randomPick(films, 1, () => 0)?.id, 2)
+  assert.equal(randomPick([{ id: 1 }], 1, () => 0)?.id, 1)
+  assert.equal(randomPick([], null), null)
+})
+
+test("a pick outside a short ring is added", () => {
+  const ring = [{ id: 1, name: "Heat" }]
+  const placed = placePick(ring, { id: 2, name: "Brick" }, 0, 48)
+  assert.equal(placed.index, 1)
+  assert.equal(placed.ring.length, 2)
 })

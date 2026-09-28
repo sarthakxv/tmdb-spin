@@ -7,3 +7,6 @@ dist/
 *.local
 .cache/
 .tmdb-session
+.data/
+test-results/
+playwright-report/

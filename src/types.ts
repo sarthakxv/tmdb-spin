@@ -1,1 +1,1 @@
-export type Film = { name: string; poster: string | null; overview?: string }
+export { type Film, type FilmDetails, type Media, type Strength, tmdbLink } from "../shared/types.ts"

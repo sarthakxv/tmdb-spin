@@ -1,4 +1,4 @@
-export function targetRotation(current: number, index: number, count: number, turns = 4): number {
+export function targetRotation(current: number, index: number, count: number, turns = 3): number {
   const step = 360 / count
   const cardBase = index * step
   const min = current - 360 * turns
