@@ -12,3 +12,18 @@ export function frontIndex(rotation: number, count: number): number {
   const index = Math.round(normalized / step)
   return index % count
 }
+
+export const CENTER_SCALE = 1.7
+
+export function degreesFromFront(rotationAngle: number): number {
+  const wrapped = ((rotationAngle % 360) + 360) % 360
+  return wrapped > 180 ? 360 - wrapped : wrapped
+}
+
+export function coverScale(rotationAngle: number, count: number): number {
+  if (count <= 1) return CENTER_SCALE
+  const fromFront = degreesFromFront(rotationAngle)
+  const t = Math.min(1, fromFront / (360 / count))
+  const eased = t * t * (3 - 2 * t)
+  return CENTER_SCALE - eased * (CENTER_SCALE - 1)
+}

@@ -6,6 +6,6 @@ import { tmdbPlugin } from "./server/plugin"
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   return {
-    plugins: [react(), tailwindcss(), tmdbPlugin(env.TMDB_API_KEY ?? "", env.TMDB_SESSION_ID)],
+    plugins: [react(), tailwindcss(), tmdbPlugin(env.TMDB_API_KEY ?? "", env.TMDB_SESSION_ID, env.OPENROUTER_API_KEY ?? "")],
   }
 })

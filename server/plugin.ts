@@ -1,5 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
+import { APICallError } from "ai"
 import type { Plugin } from "vite"
+import { jevAsk } from "./jev"
+import { MoodError, selectByMood, type MoodFilm } from "./mood"
 import { readSession, writeSession } from "./session"
 import { createRequestToken, createSession, fetchWatchlist, TmdbError } from "./watchlist"
 
@@ -20,7 +23,44 @@ function originOf(req: IncomingMessage) {
   return `http://${host}`
 }
 
-export function tmdbPlugin(apiKey: string, envSession: string | undefined): Plugin {
+function readJson(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length
+      if (size > 1_000_000) {
+        reject(new MoodError("That watchlist is too long to match.", 400))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown)
+      } catch {
+        reject(new MoodError("Enter a mood.", 400))
+      }
+    })
+    req.on("error", reject)
+  })
+}
+
+function filmsFrom(body: unknown): MoodFilm[] | null {
+  if (!body || typeof body !== "object" || !("films" in body) || !Array.isArray(body.films)) return null
+  const films: MoodFilm[] = []
+  for (const film of body.films) {
+    if (!film || typeof film !== "object" || !("name" in film) || typeof film.name !== "string") continue
+    const name = film.name.trim()
+    if (!name) continue
+    const overview = "overview" in film && typeof film.overview === "string" ? film.overview : ""
+    films.push({ name, overview })
+  }
+  return films
+}
+
+export function tmdbPlugin(apiKey: string, envSession: string | undefined, openRouterKey = ""): Plugin {
   let pendingToken: string | null = null
 
   const handle = async (req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void) => {
@@ -31,6 +71,35 @@ export function tmdbPlugin(apiKey: string, envSession: string | undefined): Plug
     try {
       if (path === "/api/health" && req.method === "GET") {
         send(res, 200, { configured: apiKey.length > 0, connected: Boolean(readSession(envSession)) })
+        return
+      }
+
+      if (path === "/api/mood" && req.method === "POST") {
+        if (!openRouterKey.trim()) {
+          send(res, 503, { error: "Add OPENROUTER_API_KEY to .env and restart." })
+          return
+        }
+        const body = await readJson(req)
+        const mood = body && typeof body === "object" && "mood" in body && typeof body.mood === "string" ? body.mood.trim() : ""
+        if (!mood) {
+          send(res, 400, { error: "Enter a mood." })
+          return
+        }
+        if (mood.length > 300) {
+          send(res, 400, { error: "Keep the mood to a sentence." })
+          return
+        }
+        const films = filmsFrom(body)
+        if (!films || films.length === 0) {
+          send(res, 400, { error: "The watchlist is empty." })
+          return
+        }
+        if (films.length > 2000) {
+          send(res, 400, { error: "That watchlist is too long to match." })
+          return
+        }
+        const index = await selectByMood(films, jevAsk(openRouterKey.trim(), mood))
+        send(res, 200, { index })
         return
       }
 
@@ -88,6 +157,18 @@ export function tmdbPlugin(apiKey: string, envSession: string | undefined): Plug
     } catch (error) {
       if (res.headersSent || res.writableEnded) {
         res.end()
+        return
+      }
+      if (path === "/api/mood") {
+        if (error instanceof MoodError) {
+          send(res, error.status, { error: error.message })
+          return
+        }
+        if (error instanceof APICallError && error.statusCode === 401) {
+          send(res, 401, { error: "Jev rejected OPENROUTER_API_KEY." })
+          return
+        }
+        send(res, 502, { error: "Jev could not pick a movie." })
         return
       }
       const message = error instanceof Error ? error.message : "TMDB could not complete that request."

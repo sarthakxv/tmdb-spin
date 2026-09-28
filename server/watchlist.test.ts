@@ -10,14 +10,23 @@ test("a watchlist movie becomes a title and poster", () => {
   assert.deepEqual(film, {
     name: "Chronicle",
     poster: "https://image.tmdb.org/t/p/w500/xENglsVIIWEEhhB5lgpy33tGcKI.jpg",
+    overview: "",
   })
-  assert.deepEqual(Object.keys(film ?? {}), ["name", "poster"])
+  assert.deepEqual(Object.keys(film ?? {}), ["name", "poster", "overview"])
+})
+
+test("a synopsis is kept for mood matching", () => {
+  assert.equal(
+    toFilm({ title: "Past Lives", poster_path: null, overview: "  Two people meet again. " })?.overview,
+    "Two people meet again.",
+  )
 })
 
 test("missing posters stay blank", () => {
   assert.deepEqual(toFilm({ title: "Haywire", poster_path: null }), {
     name: "Haywire",
     poster: null,
+    overview: "",
   })
   assert.equal(toFilm({ title: "  " }), null)
 })

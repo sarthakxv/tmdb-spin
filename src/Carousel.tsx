@@ -1,7 +1,8 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue } from "motion/react"
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { followReel } from "./reel-audio"
 import type { Film } from "./types"
-import { targetRotation } from "./spin"
+import { CENTER_SCALE, coverScale, degreesFromFront, targetRotation } from "./spin"
 
 type Phase = "ready" | "closing" | "spinning" | "revealed"
 
@@ -39,6 +40,7 @@ function ringLayout(count: number, cardWidth: number) {
 export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpinEnd }: CarouselProps) {
   const rotation = useMotionValue(0)
   const reveal = useMotionValue(0)
+  const coverDrop = useMotionValue(0)
   const drag = useRef<{ id: number; x: number; t: number; velocity: number } | null>(null)
   const coast = useRef<{ stop: () => void } | null>(null)
   const { width, height } = useViewport()
@@ -74,12 +76,16 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
     let current: { stop: () => void } | null = null
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
+    let stopReel: (() => void) | null = null
     const spin = () => {
+      stopReel = reduced ? null : followReel(rotation, films.length)
       const target = targetRotation(rotation.get(), selectedIndex, films.length)
       current = animate(rotation, target, {
         duration: reduced ? 0 : 3.4,
         ease: "easeOut",
         onComplete: () => {
+          stopReel?.()
+          stopReel = null
           if (!cancelled) onSpinEnd()
         },
       })
@@ -101,6 +107,8 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
     return () => {
       cancelled = true
       current?.stop()
+      stopReel?.()
+      stopReel = null
     }
   }, [films.length, onSpinEnd, phase, reveal, rotation, selectedIndex, spinId])
 
@@ -118,13 +126,23 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
     return () => controls.stop()
   }, [phase, reveal])
 
+  useEffect(() => {
+    const place = () => {
+      const shown = reveal.get()
+      const scale = CENTER_SCALE * (1 + shown * revealBoost)
+      coverDrop.set((paintedAtScale1 * scale) / 2)
+    }
+    place()
+    return reveal.on("change", place)
+  }, [coverDrop, paintedAtScale1, reveal, revealBoost])
+
   function stopCoast() {
     coast.current?.stop()
     coast.current = null
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (phase !== "ready" || films.length < 2) return
+    if (phase !== "ready" || films.length < 2 || reveal.get() > 0.02) return
     stopCoast()
     drag.current = { id: event.pointerId, x: event.clientX, t: event.timeStamp, velocity: 0 }
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -151,51 +169,56 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
   }
 
   const canDrag = phase === "ready" && films.length > 1
+  const selected = selectedIndex != null ? films[selectedIndex] : null
+  const coverWidth = (cardWidth / cardHeight) * paintedAtScale1 * CENTER_SCALE * (1 + revealBoost)
 
   return (
-    <div
-      className={`h-full w-full overflow-hidden touch-none ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
-      role="group"
-      aria-label="Watchlist reel"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-    >
-      <div className="relative h-full w-full" style={{ perspective: `${perspective}px` }}>
+    <div className="relative h-full w-full">
       <div
-        className="relative h-full w-full"
-        style={{ transformStyle: "preserve-3d", transform: "translateZ(0)" }}
+        className={`h-full w-full overflow-hidden touch-none ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+        role="group"
+        aria-label="Watchlist reel"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
       >
-        {films.map((film, index) => (
-          <PosterCard
-            key={`${film.name}-${index}`}
-            film={film}
-            index={index}
-            count={films.length}
-            rotation={rotation}
-            reveal={reveal}
-            selected={index === selectedIndex}
-            radius={radius}
-            cardWidth={cardWidth}
-            cardHeight={cardHeight}
-            revealBoost={revealBoost}
-          />
-        ))}
+        <div className="relative h-full w-full" style={{ perspective: `${perspective}px` }}>
+          <div
+            className="relative h-full w-full"
+            style={{ transformStyle: "preserve-3d", transform: "translateZ(0)" }}
+          >
+            {films.map((film, index) => (
+              <PosterCard
+                key={`${film.name}-${index}`}
+                film={film}
+                index={index}
+                count={films.length}
+                rotation={rotation}
+                reveal={reveal}
+                selected={index === selectedIndex}
+                radius={radius}
+                cardWidth={cardWidth}
+                cardHeight={cardHeight}
+                revealBoost={revealBoost}
+              />
+            ))}
+          </div>
+        </div>
       </div>
-      </div>
+      {selected && (
+        <motion.div
+          className="pointer-events-none absolute left-1/2 z-10"
+          style={{ top: "50%", x: "-50%", y: coverDrop, width: coverWidth, opacity: reveal }}
+          aria-hidden={phase !== "revealed"}
+        >
+          <h1 className="line-clamp-3 -translate-y-full rounded-b-sm bg-neutral-950/90 px-3 pt-2.5 pb-2 text-center font-sans text-3xl font-medium leading-tight text-balance text-neutral-50">
+            {selected.name}
+          </h1>
+        </motion.div>
+      )}
     </div>
   )
-}
-
-const CENTER_SCALE = 1.7
-
-function scaleFromCenter(rotationAngle: number) {
-  const wrapped = ((rotationAngle % 360) + 360) % 360
-  const fromFront = wrapped > 180 ? 360 - wrapped : wrapped
-  const t = Math.min(1, fromFront / 36)
-  const eased = t * t * (3 - 2 * t)
-  return CENTER_SCALE - eased * (CENTER_SCALE - 1)
 }
 
 function PosterCard({
@@ -226,7 +249,7 @@ function PosterCard({
   const transform = useTransform([rotation, reveal], (latest) => {
     const [angle, shown] = latest as [number, number]
     const rotationAngle = index * step + angle
-    const reelScale = scaleFromCenter(rotationAngle)
+    const reelScale = coverScale(rotationAngle, count)
     const finale = selected ? 1 + shown * revealBoost : 1
     return `rotateY(${rotationAngle}deg) translateZ(${radius}px) rotateY(${-rotationAngle}deg) scale(${reelScale * finale})`
   })
@@ -239,9 +262,9 @@ function PosterCard({
   })
   const zIndex = useTransform([rotation, reveal], (latest) => {
     const [angle, shown] = latest as [number, number]
-    if (selected && shown > 0.05) return 30
-    const facing = Math.cos(((index * step + angle) * Math.PI) / 180)
-    return Math.round((facing + 1) * 10)
+    if (selected && shown > 0.05) return 10000
+    const fromFront = degreesFromFront(index * step + angle)
+    return Math.round(1000 - fromFront * 10)
   })
 
   return (
