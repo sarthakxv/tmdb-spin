@@ -7,10 +7,11 @@ import { RevealPanel } from "./RevealPanel"
 import { MoodChips } from "./MoodChips"
 import { moodChips, MOOD_SUGGESTIONS, rememberMood } from "./moods"
 import { readPreference, writePreference } from "./preferences"
+import { shareText } from "./share"
 import { latchReel, missReel, primeReel } from "./reel-audio"
 import { growRing, placePick, randomPick, RING_LIMIT } from "./sample"
 import { frontIndex } from "./spin"
-import type { Film, FilmDetails, Strength } from "./types"
+import { tmdbLink, type Film, type FilmDetails, type Strength } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
 
 type Setup = "loading" | "connect" | "ready"
@@ -66,6 +67,7 @@ export function App() {
   const [matching, setMatching] = useState(false)
   const [picked, setPicked] = useState<{ mood: string; ids: number[] }>({ mood: "", ids: [] })
   const [strength, setStrength] = useState<Strength | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const denied = new URLSearchParams(window.location.search).get("auth") === "denied"
@@ -234,6 +236,18 @@ export function App() {
     }
   }
 
+  async function sharePick() {
+    if (!selected) return
+    const url = details?.link ?? tmdbLink("movie", selected.id)
+    const text = shareText(selected, mood)
+    if (navigator.share) {
+      await navigator.share({ title: selected.name, text, url }).catch(() => {})
+      return
+    }
+    await navigator.clipboard.writeText(`${text} ${url}`).catch(() => {})
+    setCopied(true)
+  }
+
   async function removeSelected() {
     if (!selected) return
     const response = await fetch(`/api/watchlist/movie/${selected.id}`, { method: "DELETE" }).catch(() => null)
@@ -264,6 +278,7 @@ export function App() {
   const [details, setDetails] = useState<FilmDetails | null>(null)
   useEffect(() => {
     setDetails(null)
+    setCopied(false)
     if (selectedId == null || !showing) return
     const controller = new AbortController()
     fetch(`/api/titles/movie/${selectedId}?region=${visitorRegion()}`, { signal: controller.signal })
@@ -341,6 +356,13 @@ export function App() {
         {phase === "revealed" && selected ? (
           <RevealPanel film={selected} details={details} strength={strength} onBack={() => setPhase("ready")}>
             <RemoveButton key={selected.id} onConfirm={() => void removeSelected()} />
+            <button
+              type="button"
+              onClick={() => void sharePick()}
+              className="rounded-full border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200"
+            >
+              {copied ? "Link copied" : "Share"}
+            </button>
             {mood.trim() && (
               <button
                 type="button"
