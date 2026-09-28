@@ -48,6 +48,16 @@ test("a mood nothing fits says so", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("no movie")
 })
 
+test("a watched film can be removed", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("textbox", { name: "Mood", exact: true }).fill("heist")
+  await page.getByRole("button", { name: "Spin" }).click()
+  await page.getByRole("button", { name: "Watched it" }).click()
+  await page.getByRole("button", { name: "Remove from TMDB watchlist?" }).click()
+  await expect(page.getByRole("textbox", { name: "Mood", exact: true })).toBeVisible()
+})
+
 test("disconnecting returns to Connect", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()

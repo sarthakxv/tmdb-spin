@@ -149,6 +149,18 @@ export function createApp(config: Config, deps: Deps) {
     return c.json(fresh)
   })
 
+  app.delete("/api/watchlist/:media/:id", async (c) => {
+    const session = c.get("session")
+    if (!session.tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
+    const media = c.req.param("media") as Media
+    const id = Number(c.req.param("id"))
+    if (!MEDIA.has(media) || !Number.isInteger(id) || id <= 0) return c.json({ error: "Unknown title." }, 400)
+    await deps.tmdb.setWatchlist(session.tmdbSessionId, media, id, false)
+    const cached = deps.watchlists.peek(session.id)
+    if (cached) deps.watchlists.set(session.id, cached.filter((film) => film.id !== id))
+    return c.json({ removed: true })
+  })
+
   app.onError((error, c) => {
     if (error instanceof TmdbError && error.status === 401) {
       const session = c.get("session")

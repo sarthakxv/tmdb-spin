@@ -25,6 +25,7 @@ function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
       return [heat, brick]
     },
     titleDetails: async (media, id) => ({ ...FAKE_DETAILS, id, link: `${media}-${id}` }),
+    setWatchlist: async () => {},
     ...overrides,
   }
 }
@@ -221,6 +222,29 @@ test("details are fetched once per film and region", async () => {
   await app.request("/api/titles/movie/949?region=IN")
   assert.equal(((await first.json()) as FilmDetails).link, "movie-IN")
   assert.equal(calls, 1)
+})
+
+test("a removed film leaves the watchlist and is never picked again", async () => {
+  const removed: number[] = []
+  const offered: string[] = []
+  const app = makeApp({
+    tmdb: fakeTmdb({
+      setWatchlist: async (_sid, _media, id) => {
+        removed.push(id)
+      },
+    }),
+    ask: () => async (criteria) => {
+      offered.push(...Object.values(criteria))
+      return { choice: "0" }
+    },
+  })
+  await connect(app)
+  await (await app.request("/api/watchlist")).text()
+  const response = await app.request("/api/watchlist/movie/1", { method: "DELETE" })
+  assert.deepEqual(await response.json(), { removed: true })
+  assert.deepEqual(removed, [1])
+  await moodRequest(app, { mood: "tense" })
+  assert.ok(!offered.some((text) => text.startsWith("Heat")))
 })
 
 test("details reject unknown media and bad ids", async () => {

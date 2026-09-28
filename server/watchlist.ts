@@ -123,6 +123,7 @@ export type Tmdb = {
   deleteSession(sessionId: string): Promise<void>
   fetchWatchlist(sessionId: string, onPage?: (films: Film[]) => void): Promise<Film[]>
   titleDetails(media: Media, id: number, region: string): Promise<FilmDetails>
+  setWatchlist(sessionId: string, media: Media, id: number, onList: boolean): Promise<void>
 }
 
 export type TmdbOptions = {
@@ -189,6 +190,15 @@ export function createTmdb(apiKey: string, options: TmdbOptions = {}): Tmdb {
     async titleDetails(media, id, region) {
       const path = `/3/${media}/${id}?append_to_response=${encodeURIComponent("videos,watch/providers")}`
       return toDetails(await call<RawDetails>(path), media, region)
+    },
+    async setWatchlist(sessionId, media, id, onList) {
+      const account = await call<{ id?: number }>("/3/account", { sessionId })
+      if (!account.id) throw new TmdbError("TMDB did not return an account.", 502)
+      await call(`/3/account/${account.id}/watchlist`, {
+        sessionId,
+        method: "POST",
+        body: { media_type: media, media_id: id, watchlist: onList },
+      })
     },
     async fetchWatchlist(sessionId, onPage) {
       const account = await call<{ id?: number }>("/3/account", { sessionId })

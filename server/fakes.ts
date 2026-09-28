@@ -33,6 +33,7 @@ export function fakeTmdb(appUrl: string): Tmdb {
       return FAKE_FILMS
     },
     titleDetails: async (media, id) => ({ ...FAKE_DETAILS, id, link: tmdbLink(media, id) }),
+    setWatchlist: async () => {},
   }
 }
 

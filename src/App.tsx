@@ -15,6 +15,19 @@ import { readWatchlist, WatchlistError } from "./watchlist"
 
 type Setup = "loading" | "connect" | "ready"
 
+function RemoveButton({ onConfirm }: { onConfirm: () => void }) {
+  const [asking, setAsking] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => (asking ? onConfirm() : setAsking(true))}
+      className="rounded-full border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200 hover:border-red-400"
+    >
+      {asking ? "Remove from TMDB watchlist?" : "Watched it"}
+    </button>
+  )
+}
+
 function WatchlistLoader() {
   const reduced = useReducedMotion()
 
@@ -221,6 +234,20 @@ export function App() {
     }
   }
 
+  async function removeSelected() {
+    if (!selected) return
+    const response = await fetch(`/api/watchlist/movie/${selected.id}`, { method: "DELETE" }).catch(() => null)
+    if (!response?.ok) {
+      setError("TMDB could not remove that film.")
+      return
+    }
+    const id = selected.id
+    setWatchlist((current) => current.filter((film) => film.id !== id))
+    setRing((current) => current.filter((film) => film.id !== id))
+    setSelectedIndex(null)
+    setPhase("ready")
+  }
+
   async function disconnect() {
     await fetch("/api/disconnect", { method: "POST" }).catch(() => {})
     setWatchlist([])
@@ -313,6 +340,7 @@ export function App() {
         </p>
         {phase === "revealed" && selected ? (
           <RevealPanel film={selected} details={details} strength={strength} onBack={() => setPhase("ready")}>
+            <RemoveButton key={selected.id} onConfirm={() => void removeSelected()} />
             {mood.trim() && (
               <button
                 type="button"

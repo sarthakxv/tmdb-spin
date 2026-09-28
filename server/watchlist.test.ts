@@ -183,6 +183,14 @@ test("thin data stays empty rather than wrong", () => {
   assert.deepEqual(details.providers, [])
 })
 
+test("removing posts watchlist false for the account", async () => {
+  const { fetch, calls } = scripted(reply(200, { id: 42 }), reply(200, { success: true }))
+  await createTmdb("key", { fetch }).setWatchlist("sid", "movie", 949, false)
+  assert.ok(calls[1]!.url.startsWith("https://api.themoviedb.org/3/account/42/watchlist"))
+  assert.equal(calls[1]!.init?.method, "POST")
+  assert.equal(calls[1]!.init?.body, JSON.stringify({ media_type: "movie", media_id: 949, watchlist: false }))
+})
+
 test("the approval link returns to the app", () => {
   assert.equal(
     createTmdb("key").authorizeUrl("tok", "https://spin.example/api/auth/callback"),
