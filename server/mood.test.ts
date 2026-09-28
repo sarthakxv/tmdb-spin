@@ -66,6 +66,21 @@ test("every group refusing means nothing fits", async () => {
   assert.equal(calls, 2)
 })
 
+test("first-round groups are asked at the same time", async () => {
+  const films = Array.from({ length: CHOICE_LIMIT * 3 }, (_, i) => ({ name: `Film ${i}` }))
+  let inFlight = 0
+  let most = 0
+  const index = await selectByMood(films, async () => {
+    inFlight += 1
+    most = Math.max(most, inFlight)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    inFlight -= 1
+    return "0"
+  })
+  assert.ok(most > 1)
+  assert.equal(index, 0)
+})
+
 test("an unknown choice is rejected", async () => {
   await assert.rejects(() => selectByMood([{ name: "A" }, { name: "B" }], async () => "nope"), /could not pick/)
 })

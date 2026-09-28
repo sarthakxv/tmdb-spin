@@ -2,6 +2,7 @@ export const CHOICE_LIMIT = 255
 const FILM_BATCH = CHOICE_LIMIT - 1
 const NONE = "none"
 const OVERVIEW_LIMIT = 240
+const PARALLEL_GROUPS = 4
 
 export type MoodFilm = { name: string; overview?: string }
 
@@ -47,10 +48,23 @@ async function narrow(films: MoodFilm[], indices: number[], ask: Ask): Promise<n
     return indices[local]!
   }
 
-  const winners: number[] = []
-  for (let start = 0; start < indices.length; start += FILM_BATCH) {
-    const winner = await narrow(films, indices.slice(start, start + FILM_BATCH), ask)
-    if (winner != null) winners.push(winner)
-  }
+  const groups: number[][] = []
+  for (let start = 0; start < indices.length; start += FILM_BATCH) groups.push(indices.slice(start, start + FILM_BATCH))
+  const winners = (await mapLimit(groups, PARALLEL_GROUPS, (group) => narrow(films, group, ask))).filter(
+    (winner): winner is number => winner != null,
+  )
   return narrow(films, winners, ask)
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await run(items[i]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
 }
