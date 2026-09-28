@@ -289,6 +289,26 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
           </div>
         </div>
       </div>
+      {canDrag && (
+        <>
+          <button
+            type="button"
+            aria-label="Previous film"
+            onClick={() => stepReel(1)}
+            className="absolute top-1/2 left-4 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-600 bg-neutral-950/80 text-3xl leading-none text-neutral-100 hover:border-neutral-300"
+          >
+            <span aria-hidden>‹</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Next film"
+            onClick={() => stepReel(-1)}
+            className="absolute top-1/2 right-4 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-600 bg-neutral-950/80 text-3xl leading-none text-neutral-100 hover:border-neutral-300"
+          >
+            <span aria-hidden>›</span>
+          </button>
+        </>
+      )}
       {selected && (
         <motion.div
           className="pointer-events-none absolute left-1/2 z-10"

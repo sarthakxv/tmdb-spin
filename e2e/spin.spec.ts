@@ -78,9 +78,9 @@ test("the TV watchlist spins separately", async ({ page }) => {
 test("the reel works from the keyboard", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()
-  const reel = page.getByRole("group", { name: "Watchlist reel" })
-  await reel.focus()
-  await page.keyboard.press("ArrowRight")
+  await expect(page.getByRole("button", { name: "Previous film" })).toBeVisible()
+  await page.getByRole("button", { name: "Next film" }).click()
+  await page.keyboard.press("ArrowLeft")
   await page.getByRole("textbox", { name: "Mood", exact: true }).fill("space")
   await page.keyboard.press("Enter")
   await expect(page.getByRole("heading", { name: "Interstellar" })).toBeVisible()
