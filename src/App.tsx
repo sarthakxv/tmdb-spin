@@ -4,6 +4,9 @@ import { Carousel } from "./Carousel"
 import { visitorRegion } from "./details"
 import { cn } from "./lib/cn"
 import { RevealPanel } from "./RevealPanel"
+import { MoodChips } from "./MoodChips"
+import { moodChips, MOOD_SUGGESTIONS, rememberMood } from "./moods"
+import { readPreference, writePreference } from "./preferences"
 import { latchReel, missReel, primeReel } from "./reel-audio"
 import { growRing, placePick, randomPick, RING_LIMIT } from "./sample"
 import { frontIndex } from "./spin"
@@ -46,6 +49,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [mood, setMood] = useState("")
+  const [recent, setRecent] = useState<string[]>(() => readPreference("recent-moods", []))
   const [matching, setMatching] = useState(false)
   const [picked, setPicked] = useState<{ mood: string; ids: number[] }>({ mood: "", ids: [] })
   const [strength, setStrength] = useState<Strength | null>(null)
@@ -143,9 +147,9 @@ export function App() {
     setPhase("ready")
   }
 
-  async function spin() {
+  async function spin(override?: string) {
     if (ring.length === 0 || phase === "spinning" || phase === "closing" || matching) return
-    const feeling = mood.trim()
+    const feeling = (override ?? mood).trim()
     if (!feeling) {
       const film = randomPick(watchlist, selected?.id ?? null)
       if (!film) return
@@ -199,6 +203,9 @@ export function App() {
       const current = ringRef.current
       const count = current.length
       const back = count === 0 ? 0 : (frontIndex(rotation.get(), count) + Math.floor(count / 2)) % count
+      const nextRecent = rememberMood(recent, feeling)
+      setRecent(nextRecent)
+      writePreference("recent-moods", nextRecent)
       setPicked({ mood: key, ids: [...exclude, data.film.id] })
       setStrength(data.strength ?? null)
       const placed = placePick(current, data.film, back)
@@ -333,6 +340,14 @@ export function App() {
               autoComplete="off"
               disabled={matching || phase === "spinning" || phase === "closing"}
               className="w-full rounded-full border border-neutral-800 bg-transparent px-5 py-3 text-center text-neutral-100 outline-none placeholder:text-neutral-500 focus-visible:border-neutral-400 disabled:opacity-60"
+            />
+            <MoodChips
+              moods={moodChips(recent, MOOD_SUGGESTIONS)}
+              disabled={matching || phase === "spinning" || phase === "closing"}
+              onPick={(pickedMood) => {
+                setMood(pickedMood)
+                void spin(pickedMood)
+              }}
             />
             <button
               type="submit"

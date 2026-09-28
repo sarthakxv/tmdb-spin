@@ -8,22 +8,29 @@ test("connecting shows the watchlist, and a mood reveals its film", async ({ pag
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()
   await expect(page.getByRole("group", { name: "Watchlist reel" })).toBeVisible()
-  await page.getByLabel("Mood").fill("space")
+  await page.getByRole("textbox", { name: "Mood", exact: true }).fill("space")
   await page.getByRole("button", { name: "Spin" }).click()
   await expect(page.getByRole("heading", { name: "Interstellar" })).toBeVisible()
   await expect(page.getByText("2014 · 2h 49m · ★ 8.4")).toBeVisible()
   await page.getByRole("button", { name: "Back" }).click()
-  await expect(page.getByLabel("Mood")).toBeVisible()
+  await expect(page.getByRole("textbox", { name: "Mood", exact: true })).toBeVisible()
 })
 
 test("something else picks a different film for the same mood", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()
-  await page.getByLabel("Mood").fill("space")
+  await page.getByRole("textbox", { name: "Mood", exact: true }).fill("space")
   await page.getByRole("button", { name: "Spin" }).click()
   await expect(page.getByRole("heading", { name: "Interstellar" })).toBeVisible()
   await page.getByRole("button", { name: "Something else" }).click()
   await expect(page.getByRole("heading", { name: "The Martian" })).toBeVisible()
+})
+
+test("a mood chip spins that mood", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("button", { name: "Cozy" }).click()
+  await expect(page.getByRole("heading", { name: "Paddington" })).toBeVisible()
 })
 
 test("a blank mood spins at random", async ({ page }) => {
@@ -36,7 +43,7 @@ test("a blank mood spins at random", async ({ page }) => {
 test("a mood nothing fits says so", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()
-  await page.getByLabel("Mood").fill("western")
+  await page.getByRole("textbox", { name: "Mood", exact: true }).fill("western")
   await page.getByRole("button", { name: "Spin" }).click()
   await expect(page.getByRole("alert")).toContainText("no movie")
 })
