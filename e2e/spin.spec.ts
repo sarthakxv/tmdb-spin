@@ -75,6 +75,20 @@ test("the TV watchlist spins separately", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Breaking Bad" })).toBeVisible()
 })
 
+test("the reel works from the keyboard", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  const reel = page.getByRole("group", { name: "Watchlist reel" })
+  await reel.focus()
+  await page.keyboard.press("ArrowRight")
+  await page.getByRole("textbox", { name: "Mood", exact: true }).fill("space")
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("heading", { name: "Interstellar" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Back" })).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("textbox", { name: "Mood", exact: true })).toBeFocused()
+})
+
 test("disconnecting returns to Connect", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Connect", exact: true }).click()

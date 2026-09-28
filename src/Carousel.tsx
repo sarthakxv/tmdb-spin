@@ -1,5 +1,5 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue } from "motion/react"
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { posterLarge, posterSrcSet, preloadPoster } from "./posters.ts"
 import { followReel } from "./reel-audio"
 import type { Film } from "./types"
@@ -161,6 +161,19 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
     rotation.set(rotation.get() + dx * 0.5)
   }
 
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (phase !== "ready" || films.length < 2) return
+    const direction = event.key === "ArrowRight" ? -1 : event.key === "ArrowLeft" ? 1 : 0
+    if (!direction) return
+    event.preventDefault()
+    stopCoast()
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    coast.current = animate(rotation, rotation.get() + direction * (360 / films.length), {
+      duration: reduced ? 0 : 0.3,
+      ease: "easeOut",
+    })
+  }
+
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const state = drag.current
     if (!state || event.pointerId !== state.id) return
@@ -177,9 +190,12 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
   return (
     <div className="relative h-full w-full">
       <div
-        className={`h-full w-full overflow-hidden touch-none ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`h-full w-full overflow-hidden touch-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-neutral-500 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
         role="group"
+        aria-roledescription="carousel"
         aria-label="Watchlist reel"
+        tabIndex={0}
+        onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

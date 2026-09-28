@@ -60,6 +60,7 @@ export function App() {
   const [genres, setGenres] = useState<{ id: number; name: string }[]>([])
   const [ring, setRing] = useState<Film[]>([])
   const ringRef = useRef(ring)
+  const moodRef = useRef<HTMLInputElement>(null)
   ringRef.current = ring
   const rotation = useMotionValue(0)
   const [phase, setPhase] = useState<"ready" | "closing" | "spinning" | "revealed">("ready")
@@ -323,6 +324,19 @@ export function App() {
 
   useEffect(() => setMuted(muted), [muted])
 
+  useEffect(() => {
+    if (phase !== "revealed") return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPhase("ready")
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [phase])
+
+  useEffect(() => {
+    if (phase === "ready") moodRef.current?.focus({ preventScroll: true })
+  }, [phase])
+
   const selected = selectedIndex != null ? ring[selectedIndex] : null
   const selectedId = selected?.id ?? null
   const showing = phase === "spinning" || phase === "revealed"
@@ -471,6 +485,7 @@ export function App() {
               value={mood}
               onChange={(event) => setMood(event.target.value)}
               placeholder="A mood, or leave it blank"
+              ref={moodRef}
               aria-label="Mood"
               autoComplete="off"
               disabled={matching || phase === "spinning" || phase === "closing"}

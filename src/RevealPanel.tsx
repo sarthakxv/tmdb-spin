@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useRef, type ReactNode } from "react"
 import { metaLine } from "./details.ts"
 import { type Film, type FilmDetails, type Strength, tmdbLink } from "./types"
 
@@ -15,6 +15,10 @@ const STRENGTH_LABEL = { strong: "Strong match", good: "Good match", loose: "Loo
 const action = "rounded-full border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200 hover:border-neutral-500"
 
 export function RevealPanel({ film, details, strength, onBack, children }: RevealPanelProps) {
+  const backRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    backRef.current?.focus()
+  }, [])
   const overview = details?.overview || film.overview
   const meta = details ? metaLine(details) : ""
   return (
@@ -53,7 +57,7 @@ export function RevealPanel({ film, details, strength, onBack, children }: Revea
         <a href={details?.link ?? tmdbLink(film.media, film.id)} target="_blank" rel="noreferrer" className={action}>
           TMDB
         </a>
-        <button type="button" onClick={onBack} className={action}>
+        <button ref={backRef} type="button" onClick={onBack} className={action}>
           Back
         </button>
       </div>
