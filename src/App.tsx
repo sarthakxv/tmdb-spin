@@ -2,7 +2,8 @@ import { motion, useReducedMotion } from "motion/react"
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
 import { Carousel } from "./Carousel"
 import { cn } from "./lib/cn"
-import { RING_SIZE, sampleFilms } from "./sample"
+import { latchReel } from "./reel-audio"
+import { growRing } from "./sample"
 import type { Film } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
 
@@ -30,7 +31,6 @@ function WatchlistLoader() {
 export function App() {
   const reducedMotion = useReducedMotion()
   const [setup, setSetup] = useState<Setup>("loading")
-  const [films, setFilms] = useState<Film[]>([])
   const [ring, setRing] = useState<Film[]>([])
   const [phase, setPhase] = useState<"ready" | "closing" | "spinning" | "revealed">("ready")
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -38,6 +38,8 @@ export function App() {
   const pendingSpin = useRef<{ ring: Film[]; index: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [mood, setMood] = useState("")
+  const [matching, setMatching] = useState(false)
 
   useEffect(() => {
     const denied = new URLSearchParams(window.location.search).get("auth") === "denied"
@@ -76,10 +78,9 @@ export function App() {
         }
         await readWatchlist(response, (batch) => {
           if (cancelled) return
-          setFilms((current) => current.concat(batch))
+          setRing((current) => growRing(current, batch))
           if (opened) return
           opened = true
-          setRing(sampleFilms(batch, RING_SIZE))
           setSetup("ready")
         })
         if (!cancelled && !opened) setSetup("ready")
@@ -128,21 +129,48 @@ export function App() {
 
   function leaveResult(event: MouseEvent<HTMLElement>) {
     if (phase !== "revealed") return
-    if (event.target instanceof Element && event.target.closest("button")) return
+    if (event.target instanceof Element && event.target.closest("form, button")) return
     setPhase("ready")
   }
 
-  function spin() {
-    if (ring.length === 0) return
-    if (phase === "revealed") {
-      const nextRing = sampleFilms(films, RING_SIZE)
-      pendingSpin.current = { ring: nextRing, index: Math.floor(Math.random() * nextRing.length) }
-      setPhase("closing")
+  async function spin() {
+    if (ring.length === 0 || phase === "spinning" || phase === "closing" || matching) return
+    const feeling = mood.trim()
+    if (!feeling) {
+      setError("Enter a mood.")
       return
     }
-    setSelectedIndex(Math.floor(Math.random() * ring.length))
-    setSpinId((value) => value + 1)
-    setPhase("spinning")
+    setMatching(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/mood", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mood: feeling,
+          films: ring.map((film) => ({ name: film.name, overview: film.overview ?? "" })),
+        }),
+      })
+      const data = (await response.json()) as { index?: number; error?: string }
+      if (
+        !response.ok ||
+        typeof data.index !== "number" ||
+        !Number.isInteger(data.index) ||
+        data.index < 0 ||
+        data.index >= ring.length
+      ) {
+        setError(data.error ?? "Jev could not pick a movie.")
+        return
+      }
+      latchReel()
+      setSelectedIndex(data.index)
+      setSpinId((value) => value + 1)
+      setPhase("spinning")
+    } catch {
+      setError("Jev could not pick a movie.")
+    } finally {
+      setMatching(false)
+    }
   }
 
   const selected = selectedIndex != null ? ring[selectedIndex] : null
@@ -199,34 +227,38 @@ export function App() {
       </div>
 
       <div className="flex flex-col items-center gap-4 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <div className="flex min-h-16 items-center">
-          {phase === "revealed" && selected && (
-            <motion.h1
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.75, ease: "easeOut" }}
-              className="max-w-lg text-center font-display text-4xl text-balance"
-            >
-              {selected.name}
-            </motion.h1>
-          )}
-        </div>
         {error && <p className="max-w-sm text-center text-pretty text-sm text-red-400">{error}</p>}
         <p className="sr-only" aria-live="polite">
-          {phase === "revealed" && selected ? selected.name : ""}
+          {matching ? "Matching a movie" : phase === "revealed" && selected ? selected.name : ""}
         </p>
         {showRing && (
-          <button
-            type="button"
-            onClick={spin}
-            disabled={phase === "spinning" || phase === "closing"}
-            className={cn(
-              "rounded-full bg-white px-8 py-3 text-neutral-950",
-              (phase === "spinning" || phase === "closing") && "opacity-60",
-            )}
+          <form
+            className="flex w-full max-w-sm flex-col items-center gap-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void spin()
+            }}
           >
-            {phase === "spinning" || phase === "closing" ? "Spinning" : phase === "revealed" ? "Spin again" : "Spin"}
-          </button>
+            <input
+              value={mood}
+              onChange={(event) => setMood(event.target.value)}
+              placeholder="A mood"
+              aria-label="Mood"
+              autoComplete="off"
+              disabled={matching || phase === "spinning" || phase === "closing"}
+              className="w-full rounded-full border border-neutral-800 bg-transparent px-5 py-3 text-center text-neutral-100 outline-none placeholder:text-neutral-500 focus-visible:border-neutral-400 disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={matching || phase === "spinning" || phase === "closing"}
+              className={cn(
+                "rounded-full bg-white px-8 py-3 text-neutral-950",
+                (matching || phase === "spinning" || phase === "closing") && "opacity-60",
+              )}
+            >
+              {matching ? "Matching" : phase === "spinning" || phase === "closing" ? "Spinning" : "Spin"}
+            </button>
+          </form>
         )}
       </div>
     </main>

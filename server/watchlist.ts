@@ -1,8 +1,9 @@
-export type Film = { name: string; poster: string | null }
+export type Film = { name: string; poster: string | null; overview: string }
 
 export type WatchlistMovie = {
   title?: string
   poster_path?: string | null
+  overview?: string | null
 }
 
 export type WatchlistPage = {
@@ -33,6 +34,7 @@ export function toFilm(movie: WatchlistMovie): Film | null {
   return {
     name,
     poster: movie.poster_path ? `${POSTER_BASE}${movie.poster_path}` : null,
+    overview: movie.overview?.trim() ?? "",
   }
 }
 

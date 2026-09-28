@@ -10,3 +10,9 @@ export function sampleFilms<T>(films: T[], count = RING_SIZE, random = Math.rand
   }
   return copy.slice(0, Math.min(count, copy.length))
 }
+
+export function growRing<T>(ring: T[], batch: T[], random = Math.random): T[] {
+  if (batch.length === 0) return ring
+  if (ring.length === 0) return sampleFilms(batch, batch.length, random)
+  return ring.concat(batch)
+}
