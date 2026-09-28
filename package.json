@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/spin.test.ts src/watchlist.test.ts server/watchlist.test.ts server/mood.test.ts server/config.test.ts server/sessions.test.ts server/app.test.ts server/ttl-cache.test.ts server/watchlist-cache.test.ts"
+    "test": "node --experimental-strip-types --test src/spin.test.ts src/watchlist.test.ts server/watchlist.test.ts server/mood.test.ts server/config.test.ts server/sessions.test.ts server/app.test.ts server/ttl-cache.test.ts server/watchlist-cache.test.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@ai-sdk/typesafe-ai": "^3.0.8",
@@ -20,6 +21,7 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
