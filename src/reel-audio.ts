@@ -142,7 +142,7 @@ export function latchReel() {
   clack(ctx, ctx.destination, 0.16, 340, 0.09, true)
 }
 
-export function followReel(rotation: Spin, count: number) {
+export function followReel(rotation: Spin, count: number, opts?: { endClack?: boolean }) {
   const ctx = getContext()
   if (!ctx || !brown || !white || count < 2) return () => {}
   active?.stop()
@@ -232,6 +232,10 @@ export function followReel(rotation: Spin, count: number) {
     master.gain.exponentialRampToValueAtTime(0.0001, now + 0.22)
     motor.stop(now + 0.28)
     air.stop(now + 0.28)
+    if (opts?.endClack === false) {
+      if (active?.stop === stop) active = null
+      return
+    }
     if (performance.now() - started > 240) clack(ctx, ctx.destination, 0.11, 150, 0.16, true)
     if (active?.stop === stop) active = null
   }

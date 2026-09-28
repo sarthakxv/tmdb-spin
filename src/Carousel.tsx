@@ -1,5 +1,5 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue } from "motion/react"
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { posterLarge, posterSrcSet, preloadPoster } from "./posters.ts"
 import { followReel } from "./reel-audio"
 import type { Film } from "./types"
@@ -44,6 +44,8 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
   const coverDrop = useMotionValue(0)
   const drag = useRef<{ id: number; x: number; t: number; velocity: number } | null>(null)
   const coast = useRef<{ stop: () => void } | null>(null)
+  const manualStop = useRef<(() => void) | null>(null)
+  const manualIdle = useRef<number | null>(null)
   const { width, height } = useViewport()
   const cardWidth = Math.max(104, Math.min(156, width * 0.2))
   const cardHeight = cardWidth * 1.5
@@ -143,9 +145,45 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
     coast.current = null
   }
 
+  function stopManualAudio() {
+    if (manualIdle.current !== null) {
+      window.clearTimeout(manualIdle.current)
+      manualIdle.current = null
+    }
+    manualStop.current?.()
+    manualStop.current = null
+  }
+
+  function startManualAudio() {
+    if (phase !== "ready" || films.length < 2) return
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    if (manualIdle.current !== null) {
+      window.clearTimeout(manualIdle.current)
+      manualIdle.current = null
+    }
+    if (!manualStop.current) {
+      manualStop.current = followReel(rotation, films.length, { endClack: false })
+    }
+  }
+
+  function scheduleManualStop(delay = 400) {
+    if (manualIdle.current !== null) window.clearTimeout(manualIdle.current)
+    manualIdle.current = window.setTimeout(stopManualAudio, delay)
+  }
+
+  // Manual follower shares followReel's singleton slot, so starting the spin
+  // silences it; still drop our handle so a stale stop can't fire later.
+  useEffect(() => {
+    if (phase !== "ready") stopManualAudio()
+  }, [phase])
+
+  useEffect(() => stopManualAudio, [])
+
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (phase !== "ready" || films.length < 2 || reveal.get() > 0.02) return
     stopCoast()
+    startManualAudio()
+    scheduleManualStop(800)
     drag.current = { id: event.pointerId, x: event.clientX, t: event.timeStamp, velocity: 0 }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -159,28 +197,55 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
     state.x = event.clientX
     state.t = event.timeStamp
     rotation.set(rotation.get() + dx * 0.5)
+    startManualAudio()
+    scheduleManualStop(400)
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (phase !== "ready" || films.length < 2) return
-    const direction = event.key === "ArrowRight" ? -1 : event.key === "ArrowLeft" ? 1 : 0
-    if (!direction) return
-    event.preventDefault()
+  function stepReel(direction: number) {
+    if (phase !== "ready" || films.length < 2 || direction === 0) return
     stopCoast()
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (!reduced) startManualAudio()
     coast.current = animate(rotation, rotation.get() + direction * (360 / films.length), {
       duration: reduced ? 0 : 0.3,
       ease: "easeOut",
+      onComplete: stopManualAudio,
     })
   }
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      const target = event.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        if (target.value.length > 0) return
+      }
+      const direction = event.key === "ArrowRight" ? -1 : event.key === "ArrowLeft" ? 1 : 0
+      if (!direction) return
+      event.preventDefault()
+      stepReel(direction)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  })
 
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const state = drag.current
     if (!state || event.pointerId !== state.id) return
     drag.current = null
     const extra = Math.max(-540, Math.min(540, state.velocity * 0.5 * 420))
-    if (Math.abs(extra) < 12) return
-    coast.current = animate(rotation, rotation.get() + extra, { duration: 0.85, ease: "easeOut" })
+    if (Math.abs(extra) < 12) {
+      scheduleManualStop(250)
+      return
+    }
+    if (manualIdle.current !== null) {
+      window.clearTimeout(manualIdle.current)
+      manualIdle.current = null
+    }
+    coast.current = animate(rotation, rotation.get() + extra, {
+      duration: 0.85,
+      ease: "easeOut",
+      onComplete: stopManualAudio,
+    })
   }
 
   const canDrag = phase === "ready" && films.length > 1
@@ -190,12 +255,11 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
   return (
     <div className="relative h-full w-full">
       <div
-        className={`h-full w-full overflow-hidden touch-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-neutral-500 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`relative z-0 h-full w-full overflow-hidden touch-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-neutral-500 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
         role="group"
         aria-roledescription="carousel"
         aria-label="Watchlist reel"
         tabIndex={0}
-        onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
