@@ -3,10 +3,11 @@ import { Hono } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { stream } from "hono/streaming"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
-import type { Film } from "../shared/types.ts"
+import type { Film, FilmDetails, Media } from "../shared/types.ts"
 import type { Config } from "./config.ts"
 import { type Ask, MoodError, selectByMood } from "./mood.ts"
 import { LOCAL_SESSION, type Session, type SessionStore } from "./sessions.ts"
+import { createTtlCache } from "./ttl-cache.ts"
 import type { WatchlistCache } from "./watchlist-cache.ts"
 import { type Tmdb, TmdbError } from "./watchlist.ts"
 
@@ -23,8 +24,11 @@ function tmdbMessage(error: unknown) {
   return error instanceof TmdbError ? error.message : "TMDB could not complete that request."
 }
 
+const MEDIA = new Set<Media>(["movie"])
+
 export function createApp(config: Config, deps: Deps) {
   const app = new Hono<AppEnv>()
+  const details = createTtlCache<FilmDetails>({ ttlMs: 24 * 60 * 60 * 1000, maxEntries: 2000 })
 
   app.use("/api/*", async (c, next) => {
     const stored = deps.sessions.get(LOCAL_SESSION)
@@ -129,6 +133,21 @@ export function createApp(config: Config, deps: Deps) {
       }
     },
   )
+
+  app.get("/api/titles/:media/:id", async (c) => {
+    if (!c.get("session").tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
+    const media = c.req.param("media") as Media
+    const id = Number(c.req.param("id"))
+    if (!MEDIA.has(media) || !Number.isInteger(id) || id <= 0) return c.json({ error: "Unknown title." }, 400)
+    const asked = c.req.query("region")?.toUpperCase() ?? ""
+    const region = /^[A-Z]{2}$/.test(asked) ? asked : "US"
+    const key = `${media}:${id}:${region}`
+    const cached = details.get(key)
+    if (cached) return c.json(cached)
+    const fresh = await deps.tmdb.titleDetails(media, id, region)
+    details.set(key, fresh)
+    return c.json(fresh)
+  })
 
   app.onError((error, c) => {
     if (error instanceof TmdbError && error.status === 401) {

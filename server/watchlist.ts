@@ -1,4 +1,4 @@
-import type { Film } from "../shared/types.ts"
+import { type Film, type FilmDetails, type Media, tmdbLink } from "../shared/types.ts"
 
 export type { Film }
 
@@ -76,12 +76,53 @@ export function retryDelay(response: Response | null, attempt: number): number {
 
 type Call = { sessionId?: string; method?: string; body?: unknown; page?: number }
 
+type RawVideo = { site?: string; type?: string; key?: string; official?: boolean }
+type RawProviders = { link?: string; flatrate?: { provider_name: string; logo_path?: string | null }[] }
+
+export type RawDetails = {
+  id: number
+  release_date?: string
+  runtime?: number | null
+  vote_average?: number
+  vote_count?: number
+  genres?: { name: string }[]
+  overview?: string | null
+  videos?: { results?: RawVideo[] }
+  "watch/providers"?: { results?: Record<string, RawProviders> }
+}
+
+export function toDetails(raw: RawDetails, media: Media, region: string): FilmDetails {
+  const year = raw.release_date ? Number(raw.release_date.slice(0, 4)) || null : null
+  const trailers = (raw.videos?.results ?? []).filter(
+    (video) => video.site === "YouTube" && video.type === "Trailer" && video.key,
+  )
+  const trailer = trailers.find((video) => video.official) ?? trailers[0]
+  const local = raw["watch/providers"]?.results?.[region]
+  const rated = (raw.vote_count ?? 0) >= 20 && typeof raw.vote_average === "number"
+  return {
+    id: raw.id,
+    year,
+    runtime: raw.runtime || null,
+    rating: rated ? Math.round(raw.vote_average! * 10) / 10 : null,
+    genres: (raw.genres ?? []).map((genre) => genre.name).slice(0, 3),
+    overview: raw.overview?.trim() ?? "",
+    trailer: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null,
+    providers: (local?.flatrate ?? []).slice(0, 4).map((provider) => ({
+      name: provider.provider_name,
+      logo: provider.logo_path ? `https://image.tmdb.org/t/p/w92${provider.logo_path}` : null,
+    })),
+    watchLink: local?.link ?? null,
+    link: tmdbLink(media, raw.id),
+  }
+}
+
 export type Tmdb = {
   authorizeUrl(requestToken: string, redirectTo: string): string
   createRequestToken(): Promise<string>
   createSession(requestToken: string): Promise<string>
   deleteSession(sessionId: string): Promise<void>
   fetchWatchlist(sessionId: string, onPage?: (films: Film[]) => void): Promise<Film[]>
+  titleDetails(media: Media, id: number, region: string): Promise<FilmDetails>
 }
 
 export type TmdbOptions = {
@@ -144,6 +185,10 @@ export function createTmdb(apiKey: string, options: TmdbOptions = {}): Tmdb {
     },
     async deleteSession(sessionId) {
       await call("/3/authentication/session", { method: "DELETE", body: { session_id: sessionId } })
+    },
+    async titleDetails(media, id, region) {
+      const path = `/3/${media}/${id}?append_to_response=${encodeURIComponent("videos,watch/providers")}`
+      return toDetails(await call<RawDetails>(path), media, region)
     },
     async fetchWatchlist(sessionId, onPage) {
       const account = await call<{ id?: number }>("/3/account", { sessionId })

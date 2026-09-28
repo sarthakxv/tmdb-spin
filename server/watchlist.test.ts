@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { collectWatchlist, createTmdb, retryDelay, TmdbError, toFilm } from "./watchlist.ts"
+import { collectWatchlist, createTmdb, retryDelay, TmdbError, toDetails, toFilm } from "./watchlist.ts"
 
 test("a watchlist movie becomes a title and poster", () => {
   const film = toFilm({
@@ -133,6 +133,54 @@ test("disconnecting deletes the TMDB session", async () => {
   assert.ok(calls[0]!.url.startsWith("https://api.themoviedb.org/3/authentication/session"))
   assert.equal(calls[0]!.init?.method, "DELETE")
   assert.equal(calls[0]!.init?.body, JSON.stringify({ session_id: "sid" }))
+})
+
+test("details keep the facts the reveal shows", () => {
+  const details = toDetails(
+    {
+      id: 949,
+      release_date: "1995-12-15",
+      runtime: 170,
+      vote_average: 7.94,
+      vote_count: 7000,
+      genres: [{ name: "Crime" }, { name: "Drama" }, { name: "Action" }, { name: "Thriller" }],
+      overview: " A heist. ",
+      videos: {
+        results: [
+          { site: "YouTube", type: "Teaser", key: "t" },
+          { site: "YouTube", type: "Trailer", key: "x", official: false },
+          { site: "YouTube", type: "Trailer", key: "y", official: true },
+        ],
+      },
+      "watch/providers": {
+        results: {
+          IN: { link: "https://tmdb/watch", flatrate: [{ provider_name: "Netflix", logo_path: "/n.png" }] },
+        },
+      },
+    },
+    "movie",
+    "IN",
+  )
+  assert.deepEqual(details, {
+    id: 949,
+    year: 1995,
+    runtime: 170,
+    rating: 7.9,
+    genres: ["Crime", "Drama", "Action"],
+    overview: "A heist.",
+    trailer: "https://www.youtube.com/watch?v=y",
+    providers: [{ name: "Netflix", logo: "https://image.tmdb.org/t/p/w92/n.png" }],
+    watchLink: "https://tmdb/watch",
+    link: "https://www.themoviedb.org/movie/949",
+  })
+})
+
+test("thin data stays empty rather than wrong", () => {
+  const details = toDetails({ id: 1, vote_average: 9, vote_count: 3 }, "movie", "US")
+  assert.equal(details.year, null)
+  assert.equal(details.rating, null)
+  assert.equal(details.trailer, null)
+  assert.deepEqual(details.providers, [])
 })
 
 test("the approval link returns to the app", () => {

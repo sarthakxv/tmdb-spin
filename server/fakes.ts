@@ -1,6 +1,19 @@
-import type { Film } from "../shared/types.ts"
+import { type Film, type FilmDetails, tmdbLink } from "../shared/types.ts"
 import type { Ask } from "./mood.ts"
 import type { Tmdb } from "./watchlist.ts"
+
+export const FAKE_DETAILS: FilmDetails = {
+  id: 0,
+  year: 2014,
+  runtime: 169,
+  rating: 8.4,
+  genres: ["Adventure", "Drama"],
+  overview: "",
+  trailer: null,
+  providers: [],
+  watchLink: null,
+  link: "",
+}
 
 export const FAKE_FILMS: Film[] = [
   { id: 157336, name: "Interstellar", poster: "/interstellar.jpg", overview: "Explorers travel through space to save humanity." },
@@ -18,6 +31,7 @@ export function fakeTmdb(appUrl: string): Tmdb {
       onPage?.(FAKE_FILMS)
       return FAKE_FILMS
     },
+    titleDetails: async (media, id) => ({ ...FAKE_DETAILS, id, link: tmdbLink(media, id) }),
   }
 }
 

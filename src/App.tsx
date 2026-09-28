@@ -1,11 +1,13 @@
 import { motion, useMotionValue, useReducedMotion } from "motion/react"
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
 import { Carousel } from "./Carousel"
+import { visitorRegion } from "./details"
 import { cn } from "./lib/cn"
+import { RevealPanel } from "./RevealPanel"
 import { latchReel, missReel, primeReel } from "./reel-audio"
 import { growRing, placePick, RING_LIMIT } from "./sample"
 import { frontIndex } from "./spin"
-import type { Film } from "./types"
+import type { Film, FilmDetails } from "./types"
 import { readWatchlist, WatchlistError } from "./watchlist"
 
 type Setup = "loading" | "connect" | "ready"
@@ -132,7 +134,7 @@ export function App() {
 
   function leaveResult(event: MouseEvent<HTMLElement>) {
     if (phase !== "revealed") return
-    if (event.target instanceof Element && event.target.closest("form, button")) return
+    if (event.target instanceof Element && event.target.closest("form, button, a, [data-keep-open]")) return
     setPhase("ready")
   }
 
@@ -200,6 +202,21 @@ export function App() {
   }
 
   const selected = selectedIndex != null ? ring[selectedIndex] : null
+  const selectedId = selected?.id ?? null
+  const showing = phase === "spinning" || phase === "revealed"
+  const [details, setDetails] = useState<FilmDetails | null>(null)
+  useEffect(() => {
+    setDetails(null)
+    if (selectedId == null || !showing) return
+    const controller = new AbortController()
+    fetch(`/api/titles/movie/${selectedId}?region=${visitorRegion()}`, { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<FilmDetails>) : null))
+      .then((data) => {
+        if (data) setDetails(data)
+      })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [selectedId, showing])
   const showRing = setup === "ready" && ring.length > 0
 
   return (
@@ -264,7 +281,10 @@ export function App() {
         <p className="sr-only" aria-live="polite">
           {matching ? "Matching a movie" : phase === "revealed" && selected ? selected.name : ""}
         </p>
-        {showRing && (
+        {phase === "revealed" && selected ? (
+          <RevealPanel film={selected} details={details} onBack={() => setPhase("ready")} />
+        ) : (
+          showRing && (
           <form
             className="flex w-full max-w-sm flex-col items-center gap-4"
             onSubmit={(event) => {
@@ -292,6 +312,7 @@ export function App() {
               {matching ? "Matching" : phase === "spinning" || phase === "closing" ? "Spinning" : "Spin"}
             </button>
           </form>
+          )
         )}
       </div>
     </main>

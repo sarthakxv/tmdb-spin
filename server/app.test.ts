@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import type { FilmDetails } from "../shared/types.ts"
 import { createApp, type Deps } from "./app.ts"
 import type { Config } from "./config.ts"
+import { FAKE_DETAILS } from "./fakes.ts"
 import { memoryStore } from "./sessions.ts"
 import { createWatchlistCache } from "./watchlist-cache.ts"
 import { TmdbError, type Tmdb } from "./watchlist.ts"
@@ -22,6 +24,7 @@ function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
       onPage?.([heat, brick])
       return [heat, brick]
     },
+    titleDetails: async (media, id) => ({ ...FAKE_DETAILS, id, link: `${media}-${id}` }),
     ...overrides,
   }
 }
@@ -201,4 +204,28 @@ test("a revoked TMDB session sends the visitor back to Connect", async () => {
   const response = await moodRequest(app, { mood: "tense" })
   assert.equal(response.status, 401)
   assert.deepEqual(await health(app), { connected: false })
+})
+
+test("details are fetched once per film and region", async () => {
+  let calls = 0
+  const app = makeApp({
+    tmdb: fakeTmdb({
+      titleDetails: async (media, id, region) => {
+        calls += 1
+        return { ...FAKE_DETAILS, id, link: `${media}-${region}` }
+      },
+    }),
+  })
+  await connect(app)
+  const first = await app.request("/api/titles/movie/949?region=IN")
+  await app.request("/api/titles/movie/949?region=IN")
+  assert.equal(((await first.json()) as FilmDetails).link, "movie-IN")
+  assert.equal(calls, 1)
+})
+
+test("details reject unknown media and bad ids", async () => {
+  const app = makeApp()
+  await connect(app)
+  assert.equal((await app.request("/api/titles/book/1")).status, 400)
+  assert.equal((await app.request("/api/titles/movie/abc")).status, 400)
 })
