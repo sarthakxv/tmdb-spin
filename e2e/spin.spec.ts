@@ -11,6 +11,7 @@ test("connecting shows the watchlist, and a mood reveals its film", async ({ pag
   await page.getByLabel("Mood").fill("space")
   await page.getByRole("button", { name: "Spin" }).click()
   await expect(page.getByRole("heading", { name: "Interstellar" })).toBeVisible()
+  await expect(page.locator('img[src*="w780/interstellar.jpg"]')).toBeVisible()
 })
 
 test("a mood nothing fits says so", async ({ page }) => {

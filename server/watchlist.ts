@@ -15,7 +15,6 @@ export type WatchlistPage = {
 }
 
 const API_BASE = "https://api.themoviedb.org"
-const POSTER_BASE = "https://image.tmdb.org/t/p/w500"
 const TIMEOUT_MS = 8000
 const MAX_RETRY_WAIT_MS = 10_000
 
@@ -40,7 +39,7 @@ export function toFilm(movie: WatchlistMovie): Film | null {
   return {
     id: movie.id,
     name,
-    poster: movie.poster_path ? `${POSTER_BASE}${movie.poster_path}` : null,
+    poster: movie.poster_path || null,
     overview: movie.overview?.trim() ?? "",
   }
 }

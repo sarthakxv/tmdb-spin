@@ -1,5 +1,6 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue } from "motion/react"
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { posterLarge, posterSrcSet, preloadPoster } from "./posters.ts"
 import { followReel } from "./reel-audio"
 import type { Film } from "./types"
 import { CENTER_SCALE, coverScale, degreesFromFront, targetRotation } from "./spin"
@@ -78,6 +79,7 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
 
     let stopReel: (() => void) | null = null
     const spin = () => {
+      preloadPoster(films[selectedIndex]?.poster ?? null)
       stopReel = reduced ? null : followReel(rotation, films.length)
       const target = targetRotation(rotation.get(), selectedIndex, films.length, 3)
       current = animate(rotation, target, {
@@ -197,6 +199,7 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
                 rotation={rotation}
                 reveal={reveal}
                 selected={index === selectedIndex}
+                revealed={index === selectedIndex && phase === "revealed"}
                 radius={radius}
                 cardWidth={cardWidth}
                 cardHeight={cardHeight}
@@ -228,6 +231,7 @@ function PosterCard({
   rotation,
   reveal,
   selected,
+  revealed,
   radius,
   cardWidth,
   cardHeight,
@@ -239,6 +243,7 @@ function PosterCard({
   rotation: MotionValue<number>
   reveal: MotionValue<number>
   selected: boolean
+  revealed: boolean
   radius: number
   cardWidth: number
   cardHeight: number
@@ -284,9 +289,12 @@ function PosterCard({
     >
       {film.poster && !failed ? (
         <img
-          src={film.poster}
+          src={revealed ? posterLarge(film.poster) : `https://image.tmdb.org/t/p/w342${film.poster}`}
+          srcSet={revealed ? undefined : posterSrcSet(film.poster)}
+          sizes={`${Math.round(cardWidth)}px`}
           alt=""
           draggable={false}
+          decoding="async"
           className="size-full object-cover"
           onError={() => setFailed(true)}
         />

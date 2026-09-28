@@ -11,7 +11,7 @@ test("a watchlist movie becomes a title and poster", () => {
   assert.deepEqual(film, {
     id: 1,
     name: "Chronicle",
-    poster: "https://image.tmdb.org/t/p/w500/xENglsVIIWEEhhB5lgpy33tGcKI.jpg",
+    poster: "/xENglsVIIWEEhhB5lgpy33tGcKI.jpg",
     overview: "",
   })
   assert.deepEqual(Object.keys(film ?? {}), ["id", "name", "poster", "overview"])

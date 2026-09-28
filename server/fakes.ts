@@ -3,7 +3,7 @@ import type { Ask } from "./mood.ts"
 import type { Tmdb } from "./watchlist.ts"
 
 export const FAKE_FILMS: Film[] = [
-  { id: 157336, name: "Interstellar", poster: null, overview: "Explorers travel through space to save humanity." },
+  { id: 157336, name: "Interstellar", poster: "/interstellar.jpg", overview: "Explorers travel through space to save humanity." },
   { id: 116149, name: "Paddington", poster: null, overview: "A cozy bear finds a home in London." },
   { id: 949, name: "Heat", poster: null, overview: "A heist crew and a detective collide." },
 ]
