@@ -4,7 +4,7 @@ import type { Plugin } from "vite"
 import { jevAsk } from "./jev.ts"
 import { MoodError, selectByMood, type MoodFilm } from "./mood.ts"
 import { readSession, writeSession } from "./session.ts"
-import { createRequestToken, createSession, fetchWatchlist, TmdbError } from "./watchlist.ts"
+import { createTmdb, TmdbError } from "./watchlist.ts"
 
 function send(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
@@ -61,6 +61,7 @@ function filmsFrom(body: unknown): MoodFilm[] | null {
 }
 
 export function tmdbPlugin(apiKey: string, envSession: string | undefined, openRouterKey = ""): Plugin {
+  const tmdb = createTmdb(apiKey)
   let pendingToken: string | null = null
 
   const handle = async (req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void) => {
@@ -113,10 +114,10 @@ export function tmdbPlugin(apiKey: string, envSession: string | undefined, openR
       }
 
       if (path === "/api/connect" && req.method === "POST") {
-        pendingToken = await createRequestToken(apiKey)
+        pendingToken = await tmdb.createRequestToken()
         const redirectTo = `${originOf(req)}/api/auth/callback`
         send(res, 200, {
-          url: `https://www.themoviedb.org/authenticate/${pendingToken}?redirect_to=${encodeURIComponent(redirectTo)}`,
+          url: tmdb.authorizeUrl(pendingToken, redirectTo),
         })
         return
       }
@@ -131,7 +132,7 @@ export function tmdbPlugin(apiKey: string, envSession: string | undefined, openR
           redirect(res, "/?auth=denied")
           return
         }
-        writeSession(await createSession(apiKey, token))
+        writeSession(await tmdb.createSession(token))
         pendingToken = null
         redirect(res, "/")
         return
@@ -148,7 +149,7 @@ export function tmdbPlugin(apiKey: string, envSession: string | undefined, openR
         res.setHeader("cache-control", "no-cache, no-transform")
         res.flushHeaders()
         try {
-          await fetchWatchlist(apiKey, sessionId, (films) => {
+          await tmdb.fetchWatchlist(sessionId, (films) => {
             res.write(`${JSON.stringify({ films })}\n`)
           })
         } catch (error) {

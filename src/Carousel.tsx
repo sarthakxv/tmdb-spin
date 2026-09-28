@@ -190,7 +190,7 @@ export function Carousel({ films, phase, selectedIndex, spinId, onClosed, onSpin
           >
             {films.map((film, index) => (
               <PosterCard
-                key={`${film.name}-${index}`}
+                key={film.id}
                 film={film}
                 index={index}
                 count={films.length}

@@ -1,6 +1,9 @@
-export type Film = { name: string; poster: string | null; overview: string }
+import type { Film } from "../shared/types.ts"
+
+export type { Film }
 
 export type WatchlistMovie = {
+  id?: number
   title?: string
   poster_path?: string | null
   overview?: string | null
@@ -11,7 +14,10 @@ export type WatchlistPage = {
   results?: WatchlistMovie[]
 }
 
+const API_BASE = "https://api.themoviedb.org"
 const POSTER_BASE = "https://image.tmdb.org/t/p/w500"
+const TIMEOUT_MS = 8000
+const MAX_RETRY_WAIT_MS = 10_000
 
 export class TmdbError extends Error {
   status: number
@@ -30,8 +36,9 @@ export function applyAuth(url: URL, headers: Record<string, string>, apiKey: str
 
 export function toFilm(movie: WatchlistMovie): Film | null {
   const name = movie.title?.trim()
-  if (!name) return null
+  if (!name || typeof movie.id !== "number") return null
   return {
+    id: movie.id,
     name,
     poster: movie.poster_path ? `${POSTER_BASE}${movie.poster_path}` : null,
     overview: movie.overview?.trim() ?? "",
@@ -61,48 +68,91 @@ export async function collectWatchlist(
   return films
 }
 
-async function tmdb<T>(apiKey: string, path: string, sessionId?: string, init?: { method?: string; body?: unknown; page?: number }): Promise<T> {
-  const url = new URL(`https://api.themoviedb.org${path}`)
-  if (sessionId) url.searchParams.set("session_id", sessionId)
-  if (init?.page) url.searchParams.set("page", String(init.page))
-  const headers: Record<string, string> = {}
-  applyAuth(url, headers, apiKey)
-  if (init?.body) headers["content-type"] = "application/json"
-  const response = await fetch(url, {
-    method: init?.method ?? "GET",
-    headers,
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-    signal: AbortSignal.timeout(8000),
-  })
-  if (response.status === 401) throw new TmdbError("TMDB rejected the credentials.", 401)
-  if (!response.ok) throw new TmdbError("TMDB could not complete that request.", response.status)
-  return (await response.json()) as T
+export function retryDelay(response: Response | null, attempt: number): number {
+  const header = response?.headers.get("retry-after")
+  const seconds = header ? Number(header) : Number.NaN
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, MAX_RETRY_WAIT_MS)
+  return 500 * 2 ** attempt
 }
 
-export async function createRequestToken(apiKey: string): Promise<string> {
-  const data = await tmdb<{ success?: boolean; request_token?: string }>(apiKey, "/3/authentication/token/new")
-  if (!data.success || !data.request_token) throw new TmdbError("TMDB did not return a request token.", 502)
-  return data.request_token
+type Call = { sessionId?: string; method?: string; body?: unknown; page?: number }
+
+export type Tmdb = {
+  authorizeUrl(requestToken: string, redirectTo: string): string
+  createRequestToken(): Promise<string>
+  createSession(requestToken: string): Promise<string>
+  deleteSession(sessionId: string): Promise<void>
+  fetchWatchlist(sessionId: string, onPage?: (films: Film[]) => void): Promise<Film[]>
 }
 
-export async function createSession(apiKey: string, requestToken: string): Promise<string> {
-  const data = await tmdb<{ success?: boolean; session_id?: string }>(apiKey, "/3/authentication/session/new", undefined, {
-    method: "POST",
-    body: { request_token: requestToken },
-  })
-  if (!data.success || !data.session_id) throw new TmdbError("TMDB didn't approve the connection.", 401)
-  return data.session_id
+export type TmdbOptions = {
+  fetch?: typeof fetch
+  sleep?: (ms: number) => Promise<void>
+  retries?: number
 }
 
-export async function fetchWatchlist(
-  apiKey: string,
-  sessionId: string,
-  onPage?: (films: Film[]) => void,
-): Promise<Film[]> {
-  const account = await tmdb<{ id?: number }>(apiKey, "/3/account", sessionId)
-  if (!account.id) throw new TmdbError("TMDB did not return an account.", 502)
-  return collectWatchlist(
-    (page) => tmdb<WatchlistPage>(apiKey, `/3/account/${account.id}/watchlist/movies`, sessionId, { page }),
-    onPage,
-  )
+export function createTmdb(apiKey: string, options: TmdbOptions = {}): Tmdb {
+  const send = options.fetch ?? fetch
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+  const retries = options.retries ?? 3
+
+  async function call<T>(path: string, request: Call = {}): Promise<T> {
+    const url = new URL(`${API_BASE}${path}`)
+    if (request.sessionId) url.searchParams.set("session_id", request.sessionId)
+    if (request.page) url.searchParams.set("page", String(request.page))
+    const headers: Record<string, string> = {}
+    applyAuth(url, headers, apiKey)
+    if (request.body) headers["content-type"] = "application/json"
+
+    for (let attempt = 0; ; attempt++) {
+      let response: Response | null = null
+      try {
+        response = await send(url, {
+          method: request.method ?? "GET",
+          headers,
+          body: request.body ? JSON.stringify(request.body) : undefined,
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+      } catch {
+        if (attempt >= retries) throw new TmdbError("TMDB did not respond.", 504)
+      }
+      if (response && response.status !== 429 && response.status < 500) {
+        if (response.status === 401) throw new TmdbError("TMDB rejected the credentials.", 401)
+        if (!response.ok) throw new TmdbError("TMDB could not complete that request.", response.status)
+        return (await response.json()) as T
+      }
+      if (attempt >= retries) throw new TmdbError("TMDB could not complete that request.", response?.status ?? 504)
+      await sleep(retryDelay(response, attempt))
+    }
+  }
+
+  return {
+    authorizeUrl(requestToken, redirectTo) {
+      return `https://www.themoviedb.org/authenticate/${requestToken}?redirect_to=${encodeURIComponent(redirectTo)}`
+    },
+    async createRequestToken() {
+      const data = await call<{ success?: boolean; request_token?: string }>("/3/authentication/token/new")
+      if (!data.success || !data.request_token) throw new TmdbError("TMDB did not return a request token.", 502)
+      return data.request_token
+    },
+    async createSession(requestToken) {
+      const data = await call<{ success?: boolean; session_id?: string }>("/3/authentication/session/new", {
+        method: "POST",
+        body: { request_token: requestToken },
+      })
+      if (!data.success || !data.session_id) throw new TmdbError("TMDB didn't approve the connection.", 401)
+      return data.session_id
+    },
+    async deleteSession(sessionId) {
+      await call("/3/authentication/session", { method: "DELETE", body: { session_id: sessionId } })
+    },
+    async fetchWatchlist(sessionId, onPage) {
+      const account = await call<{ id?: number }>("/3/account", { sessionId })
+      if (!account.id) throw new TmdbError("TMDB did not return an account.", 502)
+      return collectWatchlist(
+        (page) => call<WatchlistPage>(`/3/account/${account.id}/watchlist/movies`, { sessionId, page }),
+        onPage,
+      )
+    },
+  }
 }
