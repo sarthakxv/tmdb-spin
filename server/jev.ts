@@ -1,6 +1,6 @@
 import { createTypeSafeAi } from "@ai-sdk/typesafe-ai"
 import { experimental_evaluate } from "ai"
-import type { Ask } from "./mood"
+import type { Ask } from "./mood.ts"
 
 export function jevAsk(apiKey: string, mood: string): Ask {
   const model = createTypeSafeAi({

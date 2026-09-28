@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { APICallError } from "ai"
 import type { Plugin } from "vite"
-import { jevAsk } from "./jev"
-import { MoodError, selectByMood, type MoodFilm } from "./mood"
-import { readSession, writeSession } from "./session"
-import { createRequestToken, createSession, fetchWatchlist, TmdbError } from "./watchlist"
+import { jevAsk } from "./jev.ts"
+import { MoodError, selectByMood, type MoodFilm } from "./mood.ts"
+import { readSession, writeSession } from "./session.ts"
+import { createRequestToken, createSession, fetchWatchlist, TmdbError } from "./watchlist.ts"
 
 function send(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
