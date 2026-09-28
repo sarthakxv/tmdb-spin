@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/spin.test.ts src/watchlist.test.ts server/watchlist.test.ts server/mood.test.ts server/config.test.ts server/sessions.test.ts server/app.test.ts"
+    "test": "node --experimental-strip-types --test src/spin.test.ts src/watchlist.test.ts server/watchlist.test.ts server/mood.test.ts server/config.test.ts server/sessions.test.ts server/app.test.ts server/ttl-cache.test.ts server/watchlist-cache.test.ts"
   },
   "dependencies": {
     "@ai-sdk/typesafe-ai": "^3.0.8",

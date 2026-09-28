@@ -3,6 +3,7 @@ import test from "node:test"
 import { createApp, type Deps } from "./app.ts"
 import type { Config } from "./config.ts"
 import { memoryStore } from "./sessions.ts"
+import { createWatchlistCache } from "./watchlist-cache.ts"
 import type { Tmdb } from "./watchlist.ts"
 
 const config: Config = { tmdbApiKey: "tmdb", openRouterKey: "router", envSession: null }
@@ -28,7 +29,7 @@ function fakeTmdb(overrides: Partial<Tmdb> = {}): Tmdb {
 function makeApp(overrides: Partial<Deps> = {}, configOverrides: Partial<Config> = {}) {
   return createApp(
     { ...config, ...configOverrides },
-    { tmdb: fakeTmdb(), ask: () => async () => "0", sessions: memoryStore(), ...overrides },
+    { tmdb: fakeTmdb(), ask: () => async () => "0", sessions: memoryStore(), watchlists: createWatchlistCache(), ...overrides },
   )
 }
 
@@ -93,11 +94,68 @@ test("the watchlist streams one line per page", async () => {
   assert.deepEqual(JSON.parse(lines[0]!), { films: [heat, brick] })
 })
 
-test("an empty mood is refused", async () => {
-  const response = await makeApp().request("/api/mood", {
+async function moodRequest(app: App, body: unknown) {
+  return app.request("/api/mood", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ mood: " ", films: [heat] }),
+    body: JSON.stringify(body),
   })
+}
+
+test("a mood needs a connection", async () => {
+  const response = await moodRequest(makeApp(), { mood: "tense" })
+  assert.equal(response.status, 401)
+})
+
+test("an empty mood is refused", async () => {
+  const app = makeApp()
+  await connect(app)
+  const response = await moodRequest(app, { mood: " " })
   assert.equal(response.status, 400)
+})
+
+test("the mood is matched against the server's watchlist, not the request", async () => {
+  const seen: string[][] = []
+  const app = makeApp({
+    ask: () => async (criteria) => {
+      seen.push(Object.values(criteria))
+      return "1"
+    },
+  })
+  await connect(app)
+  const response = await moodRequest(app, { mood: "noir", films: [{ name: "Injected" }] })
+  assert.deepEqual(await response.json(), { film: brick })
+  assert.ok(seen[0]!.some((text) => text.startsWith("Heat")))
+  assert.ok(!seen[0]!.some((text) => text.startsWith("Injected")))
+})
+
+test("excluded films are not offered again", async () => {
+  const offered: string[] = []
+  const app = makeApp({
+    ask: () => async (criteria) => {
+      offered.push(...Object.values(criteria))
+      return "0"
+    },
+  })
+  await connect(app)
+  const response = await moodRequest(app, { mood: "noir", exclude: [1] })
+  assert.deepEqual(await response.json(), { film: brick })
+  assert.ok(!offered.some((text) => text.startsWith("Heat")))
+})
+
+test("the watchlist is fetched once for the stream and the spin", async () => {
+  let fetches = 0
+  const app = makeApp({
+    tmdb: fakeTmdb({
+      fetchWatchlist: async (_sid, onPage) => {
+        fetches += 1
+        onPage?.([heat])
+        return [heat]
+      },
+    }),
+  })
+  await connect(app)
+  await (await app.request("/api/watchlist")).text()
+  await moodRequest(app, { mood: "tense" })
+  assert.equal(fetches, 1)
 })

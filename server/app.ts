@@ -3,34 +3,24 @@ import { Hono } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { stream } from "hono/streaming"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
+import type { Film } from "../shared/types.ts"
 import type { Config } from "./config.ts"
-import { type Ask, MoodError, type MoodFilm, selectByMood } from "./mood.ts"
+import { type Ask, MoodError, selectByMood } from "./mood.ts"
 import { LOCAL_SESSION, type Session, type SessionStore } from "./sessions.ts"
+import type { WatchlistCache } from "./watchlist-cache.ts"
 import { type Tmdb, TmdbError } from "./watchlist.ts"
 
 export type Deps = {
   tmdb: Tmdb
   ask: (mood: string) => Ask
   sessions: SessionStore
+  watchlists: WatchlistCache
 }
 
 export type AppEnv = { Variables: { session: Session } }
 
 function tmdbMessage(error: unknown) {
   return error instanceof TmdbError ? error.message : "TMDB could not complete that request."
-}
-
-function filmsFrom(body: unknown): MoodFilm[] | null {
-  if (!body || typeof body !== "object" || !("films" in body) || !Array.isArray(body.films)) return null
-  const films: MoodFilm[] = []
-  for (const film of body.films) {
-    if (!film || typeof film !== "object" || !("name" in film) || typeof film.name !== "string") continue
-    const name = film.name.trim()
-    if (!name) continue
-    const overview = "overview" in film && typeof film.overview === "string" ? film.overview : ""
-    films.push({ name, overview })
-  }
-  return films
 }
 
 export function createApp(config: Config, deps: Deps) {
@@ -70,9 +60,16 @@ export function createApp(config: Config, deps: Deps) {
     }
   })
 
+  function watchlistFor(session: Session, onPage?: (films: Film[]) => void) {
+    const tmdbSessionId = session.tmdbSessionId
+    if (!tmdbSessionId) throw new TmdbError("Connect TMDB to read the watchlist.", 401)
+    return deps.watchlists.load(session.id, (page) => deps.tmdb.fetchWatchlist(tmdbSessionId, page), onPage)
+  }
+
   app.get("/api/watchlist", (c) => {
-    const tmdbSessionId = c.get("session").tmdbSessionId
-    if (!tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
+    const session = c.get("session")
+    if (!session.tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
+    if (c.req.query("refresh") === "1") deps.watchlists.drop(session.id)
     c.header("content-type", "application/x-ndjson")
     c.header("cache-control", "no-cache, no-transform")
     return stream(c, async (out) => {
@@ -81,7 +78,7 @@ export function createApp(config: Config, deps: Deps) {
         queue = queue.then(() => out.write(`${JSON.stringify(line)}\n`)).then(() => {})
       }
       try {
-        await deps.tmdb.fetchWatchlist(tmdbSessionId, (films) => write({ films }))
+        await watchlistFor(session, (films) => write({ films }))
       } catch (error) {
         write({ error: tmdbMessage(error) })
       }
@@ -91,22 +88,23 @@ export function createApp(config: Config, deps: Deps) {
 
   app.post(
     "/api/mood",
-    bodyLimit({
-      maxSize: 1_000_000,
-      onError: (c) => c.json({ error: "That watchlist is too long to match." }, 413),
-    }),
+    bodyLimit({ maxSize: 20_000, onError: (c) => c.json({ error: "Keep the mood to a sentence." }, 413) }),
     async (c) => {
-      const body: unknown = await c.req.json().catch(() => null)
-      const mood =
-        body && typeof body === "object" && "mood" in body && typeof body.mood === "string" ? body.mood.trim() : ""
+      const session = c.get("session")
+      if (!session.tmdbSessionId) return c.json({ error: "Connect TMDB to read the watchlist." }, 401)
+      const body = (await c.req.json().catch(() => null)) as { mood?: unknown; exclude?: unknown } | null
+      const mood = typeof body?.mood === "string" ? body.mood.trim() : ""
       if (!mood) return c.json({ error: "Enter a mood." }, 400)
       if (mood.length > 300) return c.json({ error: "Keep the mood to a sentence." }, 400)
-      const films = filmsFrom(body)
-      if (!films || films.length === 0) return c.json({ error: "The watchlist is empty." }, 400)
-      if (films.length > 2000) return c.json({ error: "That watchlist is too long to match." }, 400)
+      const exclude = new Set(
+        Array.isArray(body?.exclude) ? body.exclude.filter((id): id is number => Number.isInteger(id)) : [],
+      )
+      const films = await watchlistFor(session)
+      const candidates = films.filter((film) => !exclude.has(film.id))
+      if (candidates.length === 0) return c.json({ match: false })
       try {
-        const index = await selectByMood(films, deps.ask(mood))
-        return index == null ? c.json({ match: false }) : c.json({ index })
+        const index = await selectByMood(candidates, deps.ask(mood))
+        return index == null ? c.json({ match: false }) : c.json({ film: candidates[index] })
       } catch (error) {
         if (error instanceof MoodError) return c.json({ error: error.message }, error.status as ContentfulStatusCode)
         if (error instanceof APICallError && error.statusCode === 401) {

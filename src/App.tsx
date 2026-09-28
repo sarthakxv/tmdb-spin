@@ -140,12 +140,14 @@ export function App() {
       const response = await fetch("/api/mood", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          mood: feeling,
-          films: ring.map((film) => ({ name: film.name, overview: film.overview ?? "" })),
-        }),
+        body: JSON.stringify({ mood: feeling }),
       })
-      const data = (await response.json()) as { index?: number; match?: boolean; error?: string }
+      const data = (await response.json()) as { film?: Film; match?: boolean; error?: string }
+      if (response.status === 401) {
+        setError(data.error ?? "Connect TMDB to read the watchlist.")
+        setSetup("connect")
+        return
+      }
       if (!response.ok) {
         setError(data.error ?? "Jev could not pick a movie.")
         return
@@ -155,17 +157,15 @@ export function App() {
         setError("Your watchlist has no movie for current mood")
         return
       }
-      if (
-        typeof data.index !== "number" ||
-        !Number.isInteger(data.index) ||
-        data.index < 0 ||
-        data.index >= ring.length
-      ) {
-        setError(data.error ?? "Jev could not pick a movie.")
+      if (!data.film) {
+        setError("Jev could not pick a movie.")
         return
       }
+      const found = ring.findIndex((film) => film.id === data.film!.id)
+      const index = found === -1 ? ring.length : found
+      if (found === -1) setRing((current) => [...current, data.film!])
       latchReel()
-      setSelectedIndex(data.index)
+      setSelectedIndex(index)
       setSpinId((value) => value + 1)
       setPhase("spinning")
     } catch {
