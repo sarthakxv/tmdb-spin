@@ -1,4 +1,4 @@
-# Watchlist Spin
+# Cineroulette
 
 Spin your TMDB movie watchlist. Type a mood, and [Jev](https://openrouter.ai) picks the film that fits. The carousel lands on that title.
 

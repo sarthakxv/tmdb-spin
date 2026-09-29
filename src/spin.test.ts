@@ -13,15 +13,18 @@ test("a spin lands on the chosen card", () => {
   }
 })
 
-test("only the cover at the front is large", () => {
+test("covers get smaller farther from the front", () => {
   const many = 400
   const step = 360 / many
-  assert.equal(coverScale(0, many), 1.7)
+  assert.equal(coverScale(0, many), 1.5)
   assert.equal(coverScale(step, many), 1)
   assert.equal(coverScale(-step, many), 1)
   assert.ok(coverScale(step / 2, many) > 1)
-  assert.ok(coverScale(step / 2, many) < 1.7)
+  assert.ok(coverScale(step / 2, many) < 1.5)
   assert.equal(coverScale(360 / 20, 20), 1)
+  assert.ok(coverScale(step * 2, many) < coverScale(step, many))
+  assert.ok(coverScale(step * 3, many) < coverScale(step * 2, many))
+  assert.equal(coverScale(step * 6, many), 0.72)
 })
 
 test("the ring sample stays inside the watchlist", () => {

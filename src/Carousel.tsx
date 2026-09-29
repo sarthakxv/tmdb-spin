@@ -1,5 +1,5 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue } from "motion/react"
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { posterLarge, posterSrcSet, preloadPoster } from "./posters.ts"
 import { followReel } from "./reel-audio"
 import type { Film } from "./types"
@@ -17,25 +17,22 @@ type CarouselProps = {
   onSpinEnd: () => void
 }
 
-function useViewport() {
-  const [size, setSize] = useState(() => ({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  }))
+function useViewportWidth() {
+  const [width, setWidth] = useState(() => window.innerWidth)
 
   useEffect(() => {
-    const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight })
+    const onResize = () => setWidth(window.innerWidth)
     window.addEventListener("resize", onResize)
     return () => window.removeEventListener("resize", onResize)
   }, [])
 
-  return size
+  return width
 }
 
 function ringLayout(count: number, cardWidth: number) {
   if (count <= 1) return { radius: 0, perspective: 1200 }
   const step = (2 * Math.PI) / count
-  const radius = (cardWidth * 1.55) / (2 * Math.sin(step / 2))
+  const radius = (cardWidth * 1.25) / (2 * Math.sin(step / 2))
   return { radius, perspective: Math.max(1200, radius * 3.2) }
 }
 
@@ -46,13 +43,25 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
   const coast = useRef<{ stop: () => void } | null>(null)
   const manualStop = useRef<(() => void) | null>(null)
   const manualIdle = useRef<number | null>(null)
-  const { width, height } = useViewport()
-  const cardWidth = Math.max(104, Math.min(156, width * 0.2))
+  const frame = useRef<HTMLDivElement>(null)
+  const width = useViewportWidth()
+  const [frameHeight, setFrameHeight] = useState(() => Math.min(window.innerHeight * 0.5, 430))
+  useLayoutEffect(() => {
+    const element = frame.current
+    if (!element) return
+    const resize = () => {
+      if (element.clientHeight > 0) setFrameHeight(element.clientHeight)
+    }
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  const cardWidth = Math.min(Math.max(104, Math.min(156, width * 0.2)), (frameHeight - 16) / (1.5 * 1.46 * CENTER_SCALE))
   const cardHeight = cardWidth * 1.5
   const { radius, perspective } = ringLayout(films.length, cardWidth)
-  const stageHeight = Math.min(height * 0.68, 640)
   const paintedAtScale1 = cardHeight * (perspective / Math.max(perspective - radius, 1))
-  const fittedScale = (stageHeight * 0.9) / paintedAtScale1
+  const fittedScale = (frameHeight * 0.88) / paintedAtScale1
   const revealBoost = Math.max(0, fittedScale / CENTER_SCALE - 1)
 
   useEffect(() => {
@@ -253,12 +262,12 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
   const coverWidth = (cardWidth / cardHeight) * paintedAtScale1 * CENTER_SCALE * (1 + revealBoost)
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={frame} className="absolute inset-0">
       <div
-        className={`relative z-0 h-full w-full overflow-hidden touch-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-neutral-500 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`relative z-0 h-full w-full overflow-hidden touch-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--accent)] ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
         role="group"
         aria-roledescription="carousel"
-        aria-label="Watchlist reel"
+        aria-label="Cineroulette reel"
         tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -272,7 +281,7 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
           >
             {films.map((film, index) => (
               <PosterCard
-                key={film.id}
+                key={`${film.id}-${films.length}-${Math.round(cardWidth)}-${Math.round(frameHeight)}`}
                 film={film}
                 index={index}
                 count={films.length}
@@ -295,7 +304,7 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
             type="button"
             aria-label="Previous film"
             onClick={() => stepReel(1)}
-            className="absolute top-1/2 left-4 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-600 bg-neutral-950/80 text-3xl leading-none text-neutral-100 hover:border-neutral-300"
+            className="reel-arrow reel-arrow-prev"
           >
             <span aria-hidden>‹</span>
           </button>
@@ -303,7 +312,7 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
             type="button"
             aria-label="Next film"
             onClick={() => stepReel(-1)}
-            className="absolute top-1/2 right-4 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-600 bg-neutral-950/80 text-3xl leading-none text-neutral-100 hover:border-neutral-300"
+            className="reel-arrow reel-arrow-next"
           >
             <span aria-hidden>›</span>
           </button>
@@ -315,9 +324,9 @@ export function Carousel({ films, phase, selectedIndex, spinId, rotation, onClos
           style={{ top: "50%", x: "-50%", y: coverDrop, width: coverWidth, opacity: reveal }}
           aria-hidden={phase !== "revealed"}
         >
-          <h1 className="line-clamp-3 -translate-y-full rounded-b-sm bg-neutral-950/90 px-3 pt-2.5 pb-2 text-center font-sans text-3xl font-medium leading-tight text-balance text-neutral-50">
+          <h2 className="reel-title line-clamp-3">
             {selected.name}
-          </h1>
+          </h2>
         </motion.div>
       )}
     </div>
@@ -374,7 +383,7 @@ function PosterCard({
 
   return (
     <motion.div
-      className="pointer-events-none absolute overflow-hidden rounded-sm shadow-lg"
+      className="poster-card pointer-events-none absolute overflow-hidden"
       style={{
         width: cardWidth,
         height: cardHeight,
@@ -399,7 +408,11 @@ function PosterCard({
           onError={() => setFailed(true)}
         />
       ) : (
-        <div className="size-full bg-neutral-800" />
+        <div className={`poster-fallback ${revealed ? "is-revealed" : ""}`}>
+          <span aria-hidden="true">✳</span>
+          <span>{film.name}</span>
+          <small>CINEROULETTE</small>
+        </div>
       )}
     </motion.div>
   )

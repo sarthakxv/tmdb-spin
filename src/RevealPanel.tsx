@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react"
 import { metaLine } from "./details.ts"
-import { type Film, type FilmDetails, type Strength, tmdbLink } from "./types"
+import { type Film, type FilmDetails, type Strength } from "./types"
 
 type RevealPanelProps = {
   film: Film
@@ -12,7 +12,7 @@ type RevealPanelProps = {
 
 const STRENGTH_LABEL = { strong: "Strong match", good: "Good match", loose: "Loose match" } as const
 
-const action = "rounded-full border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200 hover:border-neutral-500"
+const action = "quiet-action"
 
 export function RevealPanel({ film, details, strength, onBack, children }: RevealPanelProps) {
   const backRef = useRef<HTMLButtonElement>(null)
@@ -25,14 +25,14 @@ export function RevealPanel({ film, details, strength, onBack, children }: Revea
     <section
       data-keep-open
       aria-label={`${film.name} details`}
-      className="flex w-full max-w-md flex-col items-center gap-3 text-center"
+      className="reveal-panel"
     >
-      {strength && <p className="text-xs uppercase tracking-wide text-neutral-500">{STRENGTH_LABEL[strength]}</p>}
-      {meta && <p className="text-sm tabular-nums text-neutral-400">{meta}</p>}
-      {details && details.genres.length > 0 && <p className="text-sm text-neutral-500">{details.genres.join(", ")}</p>}
-      {overview && <p className="line-clamp-3 text-pretty text-sm text-neutral-300">{overview}</p>}
+      {strength && <p className="reveal-strength">{STRENGTH_LABEL[strength]}</p>}
+      {meta && <p className="reveal-meta">{meta}</p>}
+      {details && details.genres.length > 0 && <p className="reveal-genres">{details.genres.join(", ")}</p>}
+      {overview && <p className="reveal-overview line-clamp-3">{overview}</p>}
       {details && details.providers.length > 0 && (
-        <div className="flex flex-col items-center gap-1">
+        <div className="provider-row">
           <a
             href={details.watchLink ?? details.link}
             target="_blank"
@@ -44,19 +44,17 @@ export function RevealPanel({ film, details, strength, onBack, children }: Revea
               provider.logo ? <img key={provider.name} src={provider.logo} alt="" className="size-8 rounded-md" /> : null,
             )}
           </a>
-          <p className="text-xs text-neutral-600">Streaming data from JustWatch</p>
+          <p className="text-xs text-[var(--muted)]">Streaming data from JustWatch</p>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-center gap-3">
+      <div className="reveal-actions">
         {children}
         {details?.trailer && (
           <a href={details.trailer} target="_blank" rel="noreferrer" className={action}>
             Trailer
           </a>
         )}
-        <a href={details?.link ?? tmdbLink(film.media, film.id)} target="_blank" rel="noreferrer" className={action}>
-          TMDB
-        </a>
+        <button type="button" disabled className={action}>WATCH</button>
         <button ref={backRef} type="button" onClick={onBack} className={action}>
           Back
         </button>
