@@ -24,7 +24,7 @@ function RemoveButton({ onConfirm }: { onConfirm: () => void }) {
     <button
       type="button"
       onClick={() => (asking ? onConfirm() : setAsking(true))}
-      className="rounded-full border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200 hover:border-red-400"
+      className="quiet-action danger-action"
     >
       {asking ? "Remove from TMDB watchlist?" : "Watched it"}
     </button>
@@ -36,9 +36,9 @@ function WatchlistLoader() {
 
   return (
     <div className="w-40" role="status" aria-label="Loading watchlist">
-      <div className="h-px w-full overflow-hidden bg-neutral-800">
+      <div className="h-px w-full overflow-hidden bg-white/15">
         <motion.div
-          className="h-full origin-left bg-neutral-100"
+          className="h-full origin-left bg-[var(--accent)]"
           initial={{ scaleX: 0 }}
           animate={{ scaleX: 1 }}
           transition={
@@ -357,25 +357,23 @@ export function App() {
   const showRing = setup === "ready" && ring.length > 0
 
   return (
-    <main
-      className={`flex h-dvh flex-col bg-neutral-950 font-sans text-neutral-100 ${phase === "revealed" ? "cursor-pointer" : ""}`}
-      onClick={leaveResult}
-    >
-      {setup === "ready" && (
-        <div className="flex items-center justify-between px-6 pt-4">
-          <button
-            type="button"
-            aria-pressed={muted}
-            aria-label="Mute reel sound"
-            onClick={() => {
-              setMutedState(!muted)
-              writePreference("muted", !muted)
-            }}
-            className="rounded-full px-3 py-1.5 text-sm text-neutral-500 hover:text-neutral-200"
-          >
-            {muted ? "Sound off" : "Sound on"}
-          </button>
-          <div role="radiogroup" aria-label="Watchlist" className="flex rounded-full border border-neutral-800 p-1 text-sm">
+    <main className={`app-shell ${phase === "revealed" ? "cursor-pointer" : ""}`} onClick={leaveResult}>
+      <header className="topbar">
+        <div className="wordmark" aria-label="Cineroulette">
+          <svg className="wordmark-symbol" viewBox="0 0 40 40" aria-hidden="true">
+            <circle cx="20" cy="20" r="19" fill="currentColor" />
+            <circle cx="20" cy="20" r="3" fill="#191915" />
+            <circle cx="20" cy="9" r="4" fill="#191915" />
+            <circle cx="30" cy="17" r="4" fill="#191915" />
+            <circle cx="26" cy="29" r="4" fill="#191915" />
+            <circle cx="14" cy="29" r="4" fill="#191915" />
+            <circle cx="10" cy="17" r="4" fill="#191915" />
+          </svg>
+          <span>Cineroulette</span>
+        </div>
+        {setup === "ready" && (
+          <>
+          <div role="radiogroup" aria-label="Watchlist" className="mode-switch">
             {(["movie", "tv"] as const).map((option) => (
               <button
                 key={option}
@@ -386,46 +384,68 @@ export function App() {
                   setMedia(option)
                   writePreference("media", option)
                 }}
-                className={cn("rounded-full px-4 py-1.5", media === option ? "bg-white text-neutral-950" : "text-neutral-400")}
+                className={cn("mode-option", media === option && "is-active")}
               >
                 {option === "movie" ? "Movies" : "TV"}
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => void disconnect()} className="text-sm text-neutral-500 hover:text-neutral-300">
+          <div className="header-actions">
+          {watchlist.length > 0 && <FilterBar films={watchlist} genres={genres} filter={filter} onChange={chooseFilter} />}
+          <button
+            type="button"
+            aria-label={!muted ? "Turn sound on" : "Turn sound off"}
+            title={!muted ? "Turn sound on" : "Turn sound off"}
+            onClick={() => {
+              setMutedState(!muted)
+              writePreference("muted", !muted)
+            }}
+            className="sound-toggle"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+              {!muted ? <><path d="M15 9a4 4 0 0 1 0 6" /><path d="M18 6a8 8 0 0 1 0 12" /></> : <><path d="m16 9 5 6" /><path d="m21 9-5 6" /></>}
+            </svg>
+          </button>
+          <button type="button" onClick={() => void disconnect()} className="header-link">
             Disconnect
           </button>
-        </div>
-      )}
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+          </div>
+          </>
+        )}
+      </header>
+      <div className="stage">
         {setup === "loading" && !error && <WatchlistLoader />}
         {setup === "connect" && (
-          <div className="flex flex-col items-center gap-6 px-6">
-            <p className="max-w-sm text-center font-display text-4xl text-balance">Connect TMDB</p>
-            <p className="max-w-sm text-center text-pretty text-neutral-400">
-              Approve access once. The app reads your movie watchlist and keeps the title and poster.
+          <div className="connect-panel">
+            <span className="eyebrow">THE GOOD PART STARTS HERE</span>
+            <h1 className="connect-title">Your watchlist,<br /><span>in motion.</span></h1>
+            <p className="connect-copy">
+              Connect TMDB to turn your saved movies and shows into a reel worth spinning.
             </p>
             <button
               type="button"
               onClick={() => void connect()}
               disabled={connecting}
-              className="rounded-full bg-white px-6 py-3 text-neutral-950 disabled:opacity-60"
+              className="primary-action"
             >
               {connecting ? "Opening TMDB" : "Connect"}
             </button>
           </div>
         )}
         {setup === "ready" && watchlist.length > 0 && (
-          <FilterBar films={watchlist} genres={genres} filter={filter} onChange={chooseFilter} />
+          <div className="stage-intro">
+            <h1 className="stage-title">Spin for a <span>{media === "movie" ? "movie" : "show"}</span></h1>
+          </div>
         )}
         {setup === "ready" && ring.length === 0 && !error && (
-          <p className="max-w-sm px-6 text-center text-pretty text-neutral-300">
+          <p className="empty-message">
             {watchlist.length > 0 ? "No films match these filters." : "Your watchlist is empty."}
           </p>
         )}
         {showRing && (
           <motion.div
-            className="h-[min(68dvh,640px)] w-full"
+            className="reel-frame"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: reducedMotion ? 0 : 0.6, ease: "easeOut" }}
@@ -443,9 +463,9 @@ export function App() {
         )}
       </div>
 
-      <div className="flex flex-col items-center gap-4 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="command-dock">
         {error && (
-          <p role="alert" className="max-w-sm text-center text-pretty text-sm text-red-400">
+          <p role="alert" className="error-message">
             {error}
           </p>
         )}
@@ -458,7 +478,7 @@ export function App() {
             <button
               type="button"
               onClick={() => void sharePick()}
-              className="rounded-full border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200"
+              className="quiet-action"
             >
               {copied ? "Link copied" : "Share"}
             </button>
@@ -466,7 +486,7 @@ export function App() {
               <button
                 type="button"
                 onClick={() => void spin()}
-                className="rounded-full bg-white px-5 py-2.5 text-sm text-neutral-950"
+                className="primary-action"
               >
                 Something else
               </button>
@@ -475,22 +495,33 @@ export function App() {
         ) : (
           showRing && (
           <form
-            className="flex w-full max-w-sm flex-col items-center gap-4"
+            className="mood-form"
             onSubmit={(event) => {
               event.preventDefault()
               void spin()
             }}
           >
+            <div className="mood-entry">
             <input
+              id="mood-input"
               value={mood}
               onChange={(event) => setMood(event.target.value)}
-              placeholder="A mood, or leave it blank"
+              placeholder="Tell us what you’re in the mood for"
               ref={moodRef}
               aria-label="Mood"
               autoComplete="off"
               disabled={matching || phase === "spinning" || phase === "closing"}
-              className="w-full rounded-full border border-neutral-800 bg-transparent px-5 py-3 text-center text-neutral-100 outline-none placeholder:text-neutral-500 focus-visible:border-neutral-400 disabled:opacity-60"
+              className="mood-input"
             />
+            <button
+              type="submit"
+              disabled={matching || phase === "spinning" || phase === "closing"}
+              className="primary-action spin-action"
+            >
+              {matching ? "Matching" : phase === "spinning" || phase === "closing" ? "Spinning" : mood.trim() ? "Spin" : "Surprise me"}
+            </button>
+            </div>
+            <label className="field-label" htmlFor="mood-input">SUGGESTED MOODS</label>
             <MoodChips
               moods={moodChips(recent, MOOD_SUGGESTIONS)}
               disabled={matching || phase === "spinning" || phase === "closing"}
@@ -499,16 +530,6 @@ export function App() {
                 void spin(pickedMood)
               }}
             />
-            <button
-              type="submit"
-              disabled={matching || phase === "spinning" || phase === "closing"}
-              className={cn(
-                "rounded-full bg-white px-8 py-3 text-neutral-950",
-                (matching || phase === "spinning" || phase === "closing") && "opacity-60",
-              )}
-            >
-              {matching ? "Matching" : phase === "spinning" || phase === "closing" ? "Spinning" : mood.trim() ? "Spin" : "Surprise me"}
-            </button>
           </form>
           )
         )}

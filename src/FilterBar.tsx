@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { decadesOf, type FilmFilter, NO_FILTER } from "../shared/filter.ts"
 import type { Film } from "./types"
 
@@ -13,24 +13,32 @@ type FilterBarProps = {
 
 export function FilterBar({ films, genres, filter, onChange }: FilterBarProps) {
   const [open, setOpen] = useState(false)
+  const dialog = useRef<HTMLDialogElement>(null)
   const present = new Set(films.flatMap((film) => film.genreIds))
   const shown = genres.filter((genre) => present.has(genre.id))
   const decades = decadesOf(films)
-  const chip = (pressed: boolean) =>
-    `rounded-full border px-3 py-1.5 text-sm ${pressed ? "border-neutral-200 text-neutral-100" : "border-neutral-800 text-neutral-400"}`
+  const chip = (pressed: boolean) => `filter-chip ${pressed ? "is-active" : ""}`
 
   function toggle(list: number[], value: number) {
     return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 px-6">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="text-sm text-neutral-400">
-        Filters
+    <div className="filter-bar">
+      <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={() => { dialog.current?.showModal(); setOpen(true) }} className="filter-toggle">
+        Filters {(filter.genreIds.length > 0 || filter.decades.length > 0) && <span className="filter-count">{filter.genreIds.length + filter.decades.length}</span>}
       </button>
-      {open && (
-        <>
-          <ul className="flex flex-wrap justify-center gap-2" aria-label="Genres">
+      <dialog ref={dialog} className="filter-dialog" aria-labelledby="filter-title" onClose={() => setOpen(false)}>
+        <div className="filter-dialog-head">
+          <div>
+            <p className="eyebrow">MAKE IT YOURS</p>
+            <h2 id="filter-title">Filters</h2>
+          </div>
+          <button type="button" className="filter-close" aria-label="Close filters" onClick={() => dialog.current?.close()}>×</button>
+        </div>
+        <div className="filter-options">
+          <h3>Genres</h3>
+          <ul className="filter-list" aria-label="Genres">
             {shown.map((genre) => (
               <li key={genre.id}>
                 <button
@@ -44,7 +52,8 @@ export function FilterBar({ films, genres, filter, onChange }: FilterBarProps) {
               </li>
             ))}
           </ul>
-          <ul className="flex flex-wrap justify-center gap-2" aria-label="Decades">
+          <h3>Decades</h3>
+          <ul className="filter-list" aria-label="Decades">
             {decades.map((decade) => (
               <li key={decade}>
                 <button
@@ -58,11 +67,12 @@ export function FilterBar({ films, genres, filter, onChange }: FilterBarProps) {
               </li>
             ))}
           </ul>
-          <button type="button" onClick={() => onChange(NO_FILTER)} className="text-sm text-neutral-500">
-            Clear
-          </button>
-        </>
-      )}
+        </div>
+        <div className="filter-dialog-actions">
+          <button type="button" onClick={() => onChange(NO_FILTER)} className="filter-clear">Clear all</button>
+          <button type="button" onClick={() => dialog.current?.close()} className="primary-action">Done</button>
+        </div>
+      </dialog>
     </div>
   )
 }
